@@ -34,22 +34,22 @@
 
 ### Task 2: Implement Graph Build Backfill From Existing Observations
 
-- [ ] Add `mem::graph-build`.
-- [ ] Collect compressed observations from stored sessions.
-- [ ] Process observations in batches.
-- [ ] Support incremental default behavior.
-- [ ] Support explicit full rebuild with `reset: true`.
+- [x] Add `mem::graph-build`.
+- [x] Collect compressed observations from stored sessions.
+- [x] Process observations in batches.
+- [x] Support incremental default behavior.
+- [x] Support explicit full rebuild with `reset: true`.
 
 **Acceptance criteria:**
 
-- [ ] Add a red `graph-build extracts graph data from stored observations` test, then make it pass.
-- [ ] Build response includes `success`, `observationsProcessed`, `nodesAdded`, and `edgesAdded`.
-- [ ] Empty observation corpus returns success with zero processed/added counts.
-- [ ] Existing graph extraction merge behavior remains unchanged.
+- [x] Add a red `graph-build extracts graph data from stored observations` test, then make it pass.
+- [x] Build response includes `success`, `observationsProcessed`, `nodesAdded`, and `edgesAdded`.
+- [x] Empty observation corpus returns success with zero processed/added counts.
+- [x] Existing graph extraction merge behavior remains unchanged.
 
 **Verify:**
 
-- [ ] `npm test -- --run test/graph.test.ts`
+- [x] `npm test -- --run test/graph.test.ts`
 
 **Dependencies:** Task 1.
 
@@ -60,9 +60,9 @@
 
 ## Checkpoint 1: Backend Graph Contract
 
-- [ ] `npm test -- --run test/graph.test.ts test/api-session-graph.test.ts`
-- [ ] `npm test -- --run test/consistency.test.ts`
-- [ ] Review disabled graph response bodies before continuing.
+- [x] `npm test -- --run test/graph.test.ts test/api-session-graph.test.ts`
+- [x] `npm test -- --run test/consistency.test.ts`
+- [x] Review disabled graph response bodies before continuing.
 
 ## Phase 2: Session Lifecycle Extraction
 

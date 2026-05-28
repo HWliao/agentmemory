@@ -5,11 +5,13 @@ vi.mock("../src/logger.js", () => ({
 }));
 
 import { registerGraphFunction } from "../src/functions/graph.js";
+import { KV } from "../src/state/schema.js";
 import type {
   CompressedObservation,
   GraphNode,
   GraphEdge,
   GraphQueryResult,
+  Session,
 } from "../src/types.js";
 
 function mockKV() {
@@ -204,6 +206,121 @@ describe("Graph Functions", () => {
     expect(result.nodesByType.file).toBe(1);
     expect(result.nodesByType.function).toBe(1);
     expect(result.edgesByType.uses).toBe(1);
+  });
+
+  it("graph-build extracts graph data from stored observations", async () => {
+    const session: Session = {
+      id: "ses_1",
+      project: "agentmemory",
+      cwd: "/repo/agentmemory",
+      startedAt: "2026-02-01T10:00:00Z",
+      status: "completed",
+      observationCount: 1,
+    };
+    await kv.set(KV.sessions, session.id, session);
+    await kv.set(KV.observations(session.id), testObs.id, testObs);
+
+    const result = (await sdk.trigger("mem::graph-build", {})) as {
+      success: boolean;
+      observationsProcessed: number;
+      nodesAdded: number;
+      edgesAdded: number;
+    };
+
+    expect(result.success).toBe(true);
+    expect(result.observationsProcessed).toBe(1);
+    expect(result.nodesAdded).toBe(2);
+    expect(result.edgesAdded).toBe(1);
+
+    const nodes = await kv.list<GraphNode>(KV.graphNodes);
+    expect(nodes.length).toBe(2);
+  });
+
+  it("graph-build returns success with zero counts for an empty corpus", async () => {
+    const result = (await sdk.trigger("mem::graph-build", {})) as {
+      success: boolean;
+      observationsProcessed: number;
+      nodesAdded: number;
+      edgesAdded: number;
+    };
+
+    expect(result).toEqual({
+      success: true,
+      observationsProcessed: 0,
+      nodesAdded: 0,
+      edgesAdded: 0,
+    });
+  });
+
+  it("graph-build skips already indexed observations in incremental mode", async () => {
+    const session: Session = {
+      id: "ses_1",
+      project: "agentmemory",
+      cwd: "/repo/agentmemory",
+      startedAt: "2026-02-01T10:00:00Z",
+      status: "completed",
+      observationCount: 1,
+    };
+    await kv.set(KV.sessions, session.id, session);
+    await kv.set(KV.observations(session.id), testObs.id, testObs);
+    await kv.set(KV.graphNodes, "gn_existing", {
+      id: "gn_existing",
+      type: "file",
+      name: "src/index.ts",
+      properties: {},
+      sourceObservationIds: [testObs.id],
+      createdAt: "2026-02-01T10:00:00Z",
+    } satisfies GraphNode);
+
+    const result = (await sdk.trigger("mem::graph-build", {})) as {
+      success: boolean;
+      observationsProcessed: number;
+      nodesAdded: number;
+      edgesAdded: number;
+    };
+
+    expect(result).toEqual({
+      success: true,
+      observationsProcessed: 0,
+      nodesAdded: 0,
+      edgesAdded: 0,
+    });
+    expect(mockProvider.compress).not.toHaveBeenCalled();
+  });
+
+  it("graph-build reset mode rebuilds already indexed observations", async () => {
+    const session: Session = {
+      id: "ses_1",
+      project: "agentmemory",
+      cwd: "/repo/agentmemory",
+      startedAt: "2026-02-01T10:00:00Z",
+      status: "completed",
+      observationCount: 1,
+    };
+    await kv.set(KV.sessions, session.id, session);
+    await kv.set(KV.observations(session.id), testObs.id, testObs);
+    await kv.set(KV.graphNodes, "gn_existing", {
+      id: "gn_existing",
+      type: "file",
+      name: "old-index.ts",
+      properties: {},
+      sourceObservationIds: [testObs.id],
+      createdAt: "2026-02-01T10:00:00Z",
+    } satisfies GraphNode);
+
+    const result = (await sdk.trigger("mem::graph-build", { reset: true })) as {
+      success: boolean;
+      observationsProcessed: number;
+      nodesAdded: number;
+      edgesAdded: number;
+    };
+
+    expect(result.success).toBe(true);
+    expect(result.observationsProcessed).toBe(1);
+    expect(mockProvider.compress).toHaveBeenCalledTimes(1);
+    const nodes = await kv.list<GraphNode>(KV.graphNodes);
+    expect(nodes.some((node) => node.id === "gn_existing")).toBe(false);
+    expect(nodes.some((node) => node.name === "src/index.ts")).toBe(true);
   });
 
   it("graph-extract returns error for empty observations", async () => {

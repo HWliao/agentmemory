@@ -5,9 +5,11 @@ import type {
   GraphQueryResult,
   CompressedObservation,
   MemoryProvider,
+  Session,
 } from "../types.js";
 import { KV, generateId } from "../state/schema.js";
 import type { StateKV } from "../state/kv.js";
+import { getGraphBatchSize } from "../config.js";
 import {
   GRAPH_EXTRACTION_SYSTEM,
   buildGraphExtractionPrompt,
@@ -106,6 +108,30 @@ function parseGraphXml(
   return { nodes, edges };
 }
 
+function isCompressedObservation(value: unknown): value is CompressedObservation {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { id?: unknown }).id === "string" &&
+    typeof (value as { sessionId?: unknown }).sessionId === "string" &&
+    typeof (value as { title?: unknown }).title === "string" &&
+    typeof (value as { narrative?: unknown }).narrative === "string" &&
+    Array.isArray((value as { concepts?: unknown }).concepts) &&
+    Array.isArray((value as { files?: unknown }).files)
+  );
+}
+
+function chunkObservations(
+  observations: CompressedObservation[],
+  batchSize: number,
+): CompressedObservation[][] {
+  const chunks: CompressedObservation[][] = [];
+  for (let i = 0; i < observations.length; i += batchSize) {
+    chunks.push(observations.slice(i, i + batchSize));
+  }
+  return chunks;
+}
+
 export function registerGraphFunction(
   sdk: ISdk,
   kv: StateKV,
@@ -195,6 +221,88 @@ export function registerGraphFunction(
         logger.error("Graph extraction failed", { error: msg });
         return { success: false, error: msg };
       }
+    },
+  );
+
+  sdk.registerFunction("mem::graph-build",
+    async (data: { batchSize?: number; reset?: boolean } = {}) => {
+      if (data.reset === true) {
+        const [nodes, edges] = await Promise.all([
+          kv.list<GraphNode>(KV.graphNodes),
+          kv.list<GraphEdge>(KV.graphEdges),
+        ]);
+        await Promise.all([
+          ...nodes.map((node) => kv.delete(KV.graphNodes, node.id)),
+          ...edges.map((edge) => kv.delete(KV.graphEdges, edge.id)),
+        ]);
+      }
+
+      const sessions = await kv.list<Session>(KV.sessions);
+      const observationsBySession = await Promise.all(
+        sessions.map((session) => kv.list<unknown>(KV.observations(session.id))),
+      );
+      const observations = observationsBySession.flat().filter(isCompressedObservation);
+
+      const alreadyIndexed = new Set<string>();
+      if (data.reset !== true) {
+        const [nodes, edges] = await Promise.all([
+          kv.list<GraphNode>(KV.graphNodes),
+          kv.list<GraphEdge>(KV.graphEdges),
+        ]);
+        for (const node of nodes) {
+          for (const obsId of node.sourceObservationIds) alreadyIndexed.add(obsId);
+        }
+        for (const edge of edges) {
+          for (const obsId of edge.sourceObservationIds) alreadyIndexed.add(obsId);
+        }
+      }
+
+      const pending = observations.filter((obs) => !alreadyIndexed.has(obs.id));
+      if (pending.length === 0) {
+        return {
+          success: true,
+          observationsProcessed: 0,
+          nodesAdded: 0,
+          edgesAdded: 0,
+        };
+      }
+
+      const requestedBatchSize = data.batchSize;
+      const batchSize =
+        typeof requestedBatchSize === "number" &&
+        Number.isInteger(requestedBatchSize) &&
+        requestedBatchSize > 0
+          ? requestedBatchSize
+          : Math.max(1, getGraphBatchSize());
+      let nodesAdded = 0;
+      let edgesAdded = 0;
+      let observationsProcessed = 0;
+
+      for (const batch of chunkObservations(pending, batchSize)) {
+        const result = (await sdk.trigger({
+          function_id: "mem::graph-extract",
+          payload: { observations: batch },
+        })) as { success?: boolean; nodesAdded?: number; edgesAdded?: number; error?: string };
+        if (result.success === false) {
+          return {
+            success: false,
+            error: result.error ?? "graph extraction failed",
+            observationsProcessed,
+            nodesAdded,
+            edgesAdded,
+          };
+        }
+        observationsProcessed += batch.length;
+        nodesAdded += result.nodesAdded ?? 0;
+        edgesAdded += result.edgesAdded ?? 0;
+      }
+
+      return {
+        success: true,
+        observationsProcessed,
+        nodesAdded,
+        edgesAdded,
+      };
     },
   );
 
