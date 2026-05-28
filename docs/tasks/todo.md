@@ -1,0 +1,282 @@
+# Task List: Graph Extraction and Viewer Rebuild Reliability
+
+## Phase 1: Backend Graph API Contract
+
+### Task 1: Return Fixed Empty Responses When Graph Extraction Is Disabled
+
+- [x] Implement fixed disabled responses for `graph/query`, `graph/stats`, `graph/extract`, and `graph/build`.
+- [x] Register `POST /agentmemory/graph/build`.
+- [x] Ensure disabled graph paths do not call `mem::graph-*` provider-backed work.
+- [x] Whitelist `graph/build` request fields only.
+
+**Acceptance criteria:**
+
+- [x] `graph/query` disabled response is `{ nodes: [], edges: [], depth: 0, skipped: true, reason: "graph_extraction_disabled" }`.
+- [x] `graph/stats` disabled response has zero counts plus `skipped: true` and `reason`.
+- [x] `graph/extract` disabled response has `success: false`, zero counts, `skipped: true`, and `reason`.
+- [x] `graph/build` disabled response has `success: false`, `observationsProcessed: 0`, zero counts, `skipped: true`, and `reason`.
+- [x] `/agentmemory/graph/build` no longer returns 404.
+
+**Verify:**
+
+- [x] `npm test -- --run test/api-session-graph.test.ts`
+- [x] `npm test -- --run test/consistency.test.ts`
+
+**Dependencies:** None.
+
+**Files:**
+
+- `src/triggers/api.ts`
+- `test/api-session-graph.test.ts`
+- `src/index.ts`
+- `README.md`
+- `AGENTS.md`
+
+### Task 2: Implement Graph Build Backfill From Existing Observations
+
+- [ ] Add `mem::graph-build`.
+- [ ] Collect compressed observations from stored sessions.
+- [ ] Process observations in batches.
+- [ ] Support incremental default behavior.
+- [ ] Support explicit full rebuild with `reset: true`.
+
+**Acceptance criteria:**
+
+- [ ] Add a red `graph-build extracts graph data from stored observations` test, then make it pass.
+- [ ] Build response includes `success`, `observationsProcessed`, `nodesAdded`, and `edgesAdded`.
+- [ ] Empty observation corpus returns success with zero processed/added counts.
+- [ ] Existing graph extraction merge behavior remains unchanged.
+
+**Verify:**
+
+- [ ] `npm test -- --run test/graph.test.ts`
+
+**Dependencies:** Task 1.
+
+**Files:**
+
+- `src/functions/graph.ts`
+- `test/graph.test.ts`
+
+## Checkpoint 1: Backend Graph Contract
+
+- [ ] `npm test -- --run test/graph.test.ts test/api-session-graph.test.ts`
+- [ ] `npm test -- --run test/consistency.test.ts`
+- [ ] Review disabled graph response bodies before continuing.
+
+## Phase 2: Session Lifecycle Extraction
+
+### Task 3: Route Session End Through Session Stopped Recovery
+
+- [ ] Update `/agentmemory/session/end` to trigger `event::session::stopped`.
+- [ ] Preserve session status update to `completed` with `endedAt`.
+- [ ] Keep `/summarize` endpoint behavior unchanged.
+
+**Acceptance criteria:**
+
+- [ ] `/session/end` validates `sessionId` as before.
+- [ ] `/session/end` triggers `event::session::stopped` with `{ sessionId }`.
+- [ ] Regression test proves stopped-session recovery work is invoked.
+
+**Verify:**
+
+- [ ] `npm test -- --run test/api-session-graph.test.ts`
+
+**Dependencies:** Task 1.
+
+**Files:**
+
+- `src/triggers/api.ts`
+- `test/api-session-graph.test.ts`
+
+## Phase 3: Viewer Graph UX
+
+### Task 4: Replace Automatic Empty Graph Build With Confirmed Build Prompt
+
+- [ ] Remove automatic `apiPost('graph/build', {})` from `loadGraph()`.
+- [ ] Render an empty state when graph has no nodes.
+- [ ] Show disabled/skipped messaging when graph APIs return disabled response bodies.
+- [ ] Provide a user-initiated build action in empty state.
+
+**Acceptance criteria:**
+
+- [ ] Opening Graph tab never starts graph build without confirmation.
+- [ ] Empty state explains graph extraction is optional and may be expensive.
+- [ ] Disabled graph state does not suggest that data is actively building.
+
+**Verify:**
+
+- [ ] Source check: `loadGraph()` does not directly call `apiPost('graph/build', {})`.
+- [ ] Manual smoke: open Graph tab with no graph data.
+
+**Dependencies:** Tasks 1 and 2.
+
+**Files:**
+
+- `src/viewer/index.html`
+
+### Task 5: Add Rebuild Modal With Incremental and Full Options
+
+- [ ] Add modal flow for `Rebuild Graph`.
+- [ ] Add `Incremental` option as the default.
+- [ ] Add explicit `Full` option.
+- [ ] Add warning text that extraction can be expensive and slow because it may call the configured LLM provider.
+- [ ] Send `reset: false` or omit reset for incremental.
+- [ ] Send `reset: true` for full.
+
+**Acceptance criteria:**
+
+- [ ] Clicking `Rebuild Graph` opens modal before any API call.
+- [ ] Cancel and overlay close make no API call.
+- [ ] Incremental is selected by default.
+- [ ] Full is not selected unless the user explicitly selects it.
+
+**Verify:**
+
+- [ ] Source check for `confirm-rebuild-graph` or equivalent action.
+- [ ] Manual smoke: cancel, incremental confirm, full confirm.
+
+**Dependencies:** Task 4.
+
+**Files:**
+
+- `src/viewer/index.html`
+
+## Checkpoint 2: Backend and Viewer Flow
+
+- [ ] `npm test -- --run test/graph.test.ts test/api-session-graph.test.ts`
+- [ ] Manual smoke Graph tab empty state.
+- [ ] Manual smoke Rebuild modal.
+
+## Phase 4: OpenCode Lifecycle Parity
+
+### Task 6: End Previous OpenCode Session On New Session Creation
+
+- [ ] Detect previous `activeSessionId` before assigning the new session ID.
+- [ ] If previous ID exists and differs from the new ID, post `/session/end` for the previous ID.
+- [ ] Continue to start and cache context for the new session.
+
+**Acceptance criteria:**
+
+- [ ] New `session.created` for a different ID ends old session first.
+- [ ] Same ID does not trigger self-end.
+- [ ] Existing start context cache behavior remains intact.
+
+**Verify:**
+
+- [ ] `npm test -- --run test/opencode-auto-context.test.ts`
+- [ ] Or run a new focused OpenCode lifecycle test if added.
+
+**Dependencies:** Task 3.
+
+**Files:**
+
+- `plugin/opencode/agentmemory-capture.ts`
+- `test/opencode-auto-context.test.ts` or new focused test
+
+### Task 7: End OpenCode Session On Compaction
+
+- [ ] Update `session.compacted` handler to post `/session/end` for current session.
+- [ ] Preserve existing summarize and observe behavior unless implementation proves summarize becomes redundant.
+- [ ] Do not call graph endpoints directly from OpenCode.
+
+**Acceptance criteria:**
+
+- [ ] `session.compacted` posts `/session/end`.
+- [ ] `session_compacted` observation is still recorded.
+- [ ] Backend remains the only graph extraction trigger.
+
+**Verify:**
+
+- [ ] `npm test -- --run test/opencode-auto-context.test.ts`
+- [ ] Or run a new focused OpenCode lifecycle test if added.
+
+**Dependencies:** Task 3.
+
+**Files:**
+
+- `plugin/opencode/agentmemory-capture.ts`
+- `test/opencode-auto-context.test.ts` or new focused test
+
+## Phase 5: Retrieval Verification
+
+### Task 8: Prove Hybrid Search Uses Graph Results
+
+- [ ] Add graph nodes and edges to test KV.
+- [ ] Store matching compressed observation.
+- [ ] Search for an entity that matches graph data.
+- [ ] Assert returned result has `graphScore > 0` or graph context.
+
+**Acceptance criteria:**
+
+- [ ] Test is deterministic and does not require LLM/network.
+- [ ] Graph result participates in `HybridSearch` result scoring.
+- [ ] Existing BM25-only tests continue passing.
+
+**Verify:**
+
+- [ ] `npm test -- --run test/hybrid-search.test.ts`
+
+**Dependencies:** None.
+
+**Files:**
+
+- `test/hybrid-search.test.ts`
+
+## Phase 6: Final Consistency and Verification
+
+### Task 9: Update Endpoint Counts and Key Endpoint Docs
+
+- [ ] Update `src/index.ts` REST endpoint count.
+- [ ] Update `README.md` endpoint count.
+- [ ] Update `AGENTS.md` REST endpoint count.
+- [ ] Add `/agentmemory/graph/build` to key endpoint docs if appropriate.
+
+**Acceptance criteria:**
+
+- [ ] `test/consistency.test.ts` passes.
+- [ ] README and AGENTS counts match `src/triggers/api.ts`.
+
+**Verify:**
+
+- [ ] `npm test -- --run test/consistency.test.ts`
+
+**Dependencies:** Task 1.
+
+**Files:**
+
+- `src/index.ts`
+- `README.md`
+- `AGENTS.md`
+
+### Task 10: Final Verification
+
+- [ ] Run targeted graph/API tests.
+- [ ] Run retrieval and OpenCode tests.
+- [ ] Run consistency tests.
+- [ ] Run full non-integration test suite.
+- [ ] Run build.
+
+**Acceptance criteria:**
+
+- [ ] All targeted tests pass.
+- [ ] `npm test` passes.
+- [ ] `npm run build` passes.
+
+**Verify:**
+
+- [ ] `npm test -- --run test/graph.test.ts test/api-session-graph.test.ts`
+- [ ] `npm test -- --run test/hybrid-search.test.ts test/opencode-auto-context.test.ts test/consistency.test.ts`
+- [ ] `npm test`
+- [ ] `npm run build`
+
+**Dependencies:** Tasks 1-9.
+
+**Files:** None unless verification reveals issues.
+
+## Human Review Checkpoint
+
+- [ ] Confirm task order.
+- [ ] Confirm `Full` rebuild semantics are acceptable when explicitly selected.
+- [ ] Confirm OpenCode compaction should preserve current summarize call plus session end.
+- [ ] Confirm implementation may proceed.

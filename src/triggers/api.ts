@@ -73,13 +73,46 @@ function flagDisabledResponse(opts: {
   };
 }
 
-function graphDisabledResponse(): Response {
-  return flagDisabledResponse({
-    error: "Knowledge graph not enabled",
-    flag: "GRAPH_EXTRACTION_ENABLED",
-    enableHow: "Set GRAPH_EXTRACTION_ENABLED=true and restart. Requires an LLM provider key.",
-    docsHref: "https://github.com/rohitg00/agentmemory#knowledge-graph",
-  });
+type GraphDisabledKind = "query" | "stats" | "extract" | "build";
+
+function graphDisabledResponse(kind: GraphDisabledKind): Response {
+  const reason = "graph_extraction_disabled";
+  if (kind === "query") {
+    return {
+      status_code: 200,
+      body: { nodes: [], edges: [], depth: 0, skipped: true, reason },
+    };
+  }
+  if (kind === "stats") {
+    return {
+      status_code: 200,
+      body: {
+        totalNodes: 0,
+        totalEdges: 0,
+        nodesByType: {},
+        edgesByType: {},
+        skipped: true,
+        reason,
+      },
+    };
+  }
+  if (kind === "extract") {
+    return {
+      status_code: 200,
+      body: { success: false, skipped: true, reason, nodesAdded: 0, edgesAdded: 0 },
+    };
+  }
+  return {
+    status_code: 200,
+    body: {
+      success: false,
+      skipped: true,
+      reason,
+      observationsProcessed: 0,
+      nodesAdded: 0,
+      edgesAdded: 0,
+    },
+  };
 }
 
 function consolidationDisabledResponse(): Response {
@@ -1327,11 +1360,12 @@ export function registerApiTriggers(
     ): Promise<Response> => {
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
+      if (!isGraphExtractionEnabled()) return graphDisabledResponse("query");
       try {
         const result = await sdk.trigger({ function_id: "mem::graph-query", payload: req.body || {} });
         return { status_code: 200, body: result };
       } catch {
-        return graphDisabledResponse();
+        return graphDisabledResponse("query");
       }
     },
   );
@@ -1345,11 +1379,12 @@ export function registerApiTriggers(
     async (req: ApiRequest): Promise<Response> => {
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
+      if (!isGraphExtractionEnabled()) return graphDisabledResponse("stats");
       try {
         const result = await sdk.trigger({ function_id: "mem::graph-stats", payload: {} });
         return { status_code: 200, body: result };
       } catch {
-        return graphDisabledResponse();
+        return graphDisabledResponse("stats");
       }
     },
   );
@@ -1363,6 +1398,7 @@ export function registerApiTriggers(
     async (req: ApiRequest<{ observations: unknown[] }>): Promise<Response> => {
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
+      if (!isGraphExtractionEnabled()) return graphDisabledResponse("extract");
       if (
         !Array.isArray(req.body?.observations) ||
         req.body.observations.length === 0
@@ -1376,7 +1412,7 @@ export function registerApiTriggers(
         const result = await sdk.trigger({ function_id: "mem::graph-extract", payload: req.body });
         return { status_code: 200, body: result };
       } catch {
-        return graphDisabledResponse();
+        return graphDisabledResponse("extract");
       }
     },
   );
@@ -1384,6 +1420,29 @@ export function registerApiTriggers(
     type: "http",
     function_id: "api::graph-extract",
     config: { api_path: "/agentmemory/graph/extract", http_method: "POST" },
+  });
+
+  sdk.registerFunction("api::graph-build",
+    async (req: ApiRequest<{ batchSize?: number; reset?: boolean }>): Promise<Response> => {
+      const authErr = checkAuth(req, secret);
+      if (authErr) return authErr;
+      if (!isGraphExtractionEnabled()) return graphDisabledResponse("build");
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const batchSize = parseOptionalPositiveInt(body.batchSize);
+      if (batchSize === null) {
+        return { status_code: 400, body: { error: "batchSize must be a positive integer" } };
+      }
+      const payload: Record<string, unknown> = {};
+      if (batchSize !== undefined) payload.batchSize = batchSize;
+      if (typeof body.reset === "boolean") payload.reset = body.reset;
+      const result = await sdk.trigger({ function_id: "mem::graph-build", payload });
+      return { status_code: 200, body: result };
+    },
+  );
+  sdk.registerTrigger({
+    type: "http",
+    function_id: "api::graph-build",
+    config: { api_path: "/agentmemory/graph/build", http_method: "POST" },
   });
 
   sdk.registerFunction("api::consolidate-pipeline", 
