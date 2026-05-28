@@ -93,20 +93,20 @@
 
 ### Task 4: Replace Automatic Empty Graph Build With Confirmed Build Prompt
 
-- [ ] Remove automatic `apiPost('graph/build', {})` from `loadGraph()`.
-- [ ] Render an empty state when graph has no nodes.
-- [ ] Show disabled/skipped messaging when graph APIs return disabled response bodies.
-- [ ] Provide a user-initiated build action in empty state.
+- [x] Remove automatic `apiPost('graph/build', {})` from `loadGraph()`.
+- [x] Render an empty state when graph has no nodes.
+- [x] Show disabled/skipped messaging when graph APIs return disabled response bodies.
+- [x] Provide a user-initiated build action in empty state.
 
 **Acceptance criteria:**
 
-- [ ] Opening Graph tab never starts graph build without confirmation.
-- [ ] Empty state explains graph extraction is optional and may be expensive.
-- [ ] Disabled graph state does not suggest that data is actively building.
+- [x] Opening Graph tab never starts graph build without confirmation.
+- [x] Empty state explains graph extraction is optional and may be expensive.
+- [x] Disabled graph state does not suggest that data is actively building.
 
 **Verify:**
 
-- [ ] Source check: `loadGraph()` does not directly call `apiPost('graph/build', {})`.
+- [x] Source check: `loadGraph()` does not directly call `apiPost('graph/build', {})`.
 - [ ] Manual smoke: open Graph tab with no graph data.
 
 **Dependencies:** Tasks 1 and 2.

@@ -385,6 +385,37 @@
       width: 100%;
       height: 100%;
     }
+    .graph-empty-state {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      pointer-events: none;
+    }
+    .graph-empty-state.visible { display: flex; }
+    .graph-empty-card {
+      width: min(460px, 100%);
+      background: var(--bg);
+      border: 2px solid var(--border);
+      box-shadow: 6px 6px 0px 0px var(--border-light);
+      padding: 24px;
+      pointer-events: auto;
+    }
+    .graph-empty-card h3 {
+      font-family: var(--font-display);
+      font-size: 20px;
+      margin-bottom: 10px;
+      color: var(--ink);
+    }
+    .graph-empty-card p {
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--ink-muted);
+      margin-bottom: 14px;
+    }
+    .graph-empty-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
     .graph-sidebar {
       width: 260px;
       border-left: 2px solid var(--border);
@@ -1109,7 +1140,7 @@
     var state = {
       activeTab: 'dashboard',
       dashboard: { loaded: false, health: null, sessions: [], memories: [], graphStats: null, recentAudit: [], lessons: [], crystals: [] },
-      graph: { loaded: false, nodes: [], edges: [], stats: null, filters: {}, selectedNode: null },
+      graph: { loaded: false, nodes: [], edges: [], stats: null, filters: {}, selectedNode: null, disabled: false, skippedReason: '' },
       memories: { loaded: false, items: [], search: '', typeFilter: '' },
       timeline: { loaded: false, observations: [], sessionId: '', minImportance: 0, page: 0, pageSize: 50 },
       sessions: { loaded: false, items: [], selectedId: null },
@@ -1680,7 +1711,7 @@
 
     async function loadGraph() {
       var el = document.getElementById('view-graph');
-      el.innerHTML = '<div class="graph-container"><div class="graph-canvas-wrap"><canvas id="graph-canvas"></canvas><div class="graph-controls"><button title="Zoom In" data-action="zoom-graph" data-dir="1">+</button><button title="Zoom Out" data-action="zoom-graph" data-dir="-1">&minus;</button><div class="ctrl-divider"></div><button title="Recenter" data-action="recenter-graph">⌖</button></div><div class="graph-tooltip" id="graph-tooltip"></div></div><div class="graph-sidebar" id="graph-sidebar"></div></div>';
+      el.innerHTML = '<div class="graph-container"><div class="graph-canvas-wrap"><canvas id="graph-canvas"></canvas><div class="graph-empty-state" id="graph-empty-state"></div><div class="graph-controls"><button title="Zoom In" data-action="zoom-graph" data-dir="1">+</button><button title="Zoom Out" data-action="zoom-graph" data-dir="-1">&minus;</button><div class="ctrl-divider"></div><button title="Recenter" data-action="recenter-graph">⌖</button></div><div class="graph-tooltip" id="graph-tooltip"></div></div><div class="graph-sidebar" id="graph-sidebar"></div></div>';
 
       var results = await Promise.all([
         apiPost('graph/query', {}),
@@ -1690,22 +1721,8 @@
       state.graph.nodes = queryResult.nodes || [];
       state.graph.edges = queryResult.edges || [];
       state.graph.stats = results[1] || {};
-
-      if (state.graph.nodes.length === 0) {
-        var sb = document.getElementById('graph-sidebar');
-        if (sb) sb.innerHTML = '<h3>Graph</h3><p style="font-size:12px;color:var(--ink-faint);margin:8px 0;font-style:italic;">No graph data yet. Building from observations and memories...</p>';
-        var buildResult = await apiPost('graph/build', {});
-        if (buildResult && buildResult.success && buildResult.nodes > 0) {
-          var freshResults = await Promise.all([
-            apiPost('graph/query', {}),
-            apiGet('graph/stats')
-          ]);
-          var freshQuery = freshResults[0] || { nodes: [], edges: [] };
-          state.graph.nodes = freshQuery.nodes || [];
-          state.graph.edges = freshQuery.edges || [];
-          state.graph.stats = freshResults[1] || {};
-        }
-      }
+      state.graph.disabled = !!(queryResult.skipped || state.graph.stats.skipped);
+      state.graph.skippedReason = queryResult.reason || state.graph.stats.reason || '';
 
       state.graph.loaded = true;
       var types = {};
@@ -1722,12 +1739,54 @@
     };
     var graphSearchTerm = '';
 
+    function renderGraphEmptyState() {
+      var empty = document.getElementById('graph-empty-state');
+      if (!empty) return;
+      if (state.graph.nodes.length > 0) {
+        empty.classList.remove('visible');
+        empty.innerHTML = '';
+        return;
+      }
+      var disabled = state.graph.disabled || state.graph.skippedReason === 'graph_extraction_disabled';
+      var html = '<div class="graph-empty-card">';
+      if (disabled) {
+        html += '<h3>Graph extraction is disabled</h3>';
+        html += '<p>The knowledge graph is optional and is currently off. Enable <code>GRAPH_EXTRACTION_ENABLED=true</code> and restart agentmemory to build graph data.</p>';
+        html += '<p style="font-size:12px;color:var(--ink-faint);">No LLM-backed graph extraction was started from this page.</p>';
+      } else {
+        html += '<h3>No graph data yet</h3>';
+        html += '<p>Build the graph from stored compressed observations when you are ready. This can be slow or expensive because it may call your configured LLM provider.</p>';
+        html += '<div class="graph-empty-actions"><button class="btn btn-primary" data-action="build-graph">Build Graph</button><span style="font-size:11px;color:var(--ink-faint);font-family:var(--font-mono);">Incremental by default</span></div>';
+      }
+      html += '</div>';
+      empty.innerHTML = html;
+      empty.classList.add('visible');
+    }
+
     function renderGraphSidebar() {
       var sb = document.getElementById('graph-sidebar');
       if (!sb) return;
       var gs = state.graph.stats || {};
       var nodeCount = gs.totalNodes !== undefined ? gs.totalNodes : (gs.nodes !== undefined ? gs.nodes : (gs.nodeCount || state.graph.nodes.length));
       var edgeCount = gs.totalEdges !== undefined ? gs.totalEdges : (gs.edges !== undefined ? gs.edges : (gs.edgeCount || state.graph.edges.length));
+
+      if (state.graph.nodes.length === 0) {
+        var disabled = state.graph.disabled || state.graph.skippedReason === 'graph_extraction_disabled';
+        var emptyHtml = '<h3>Graph</h3>';
+        emptyHtml += '<div style="font-size:28px;font-weight:900;font-family:var(--font-display);color:var(--ink);line-height:1;margin:10px 0 4px;">0</div>';
+        emptyHtml += '<div style="font-size:9px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:0.12em;font-family:var(--font-ui);font-weight:600;margin-bottom:16px;">Nodes</div>';
+        if (disabled) {
+          emptyHtml += '<p style="font-size:12px;color:var(--ink-muted);line-height:1.5;margin:8px 0;">Graph extraction is disabled. Set <code>GRAPH_EXTRACTION_ENABLED=true</code> and restart to enable graph build.</p>';
+          emptyHtml += '<p style="font-size:11px;color:var(--ink-faint);line-height:1.5;">Reason: ' + esc(state.graph.skippedReason || 'graph_extraction_disabled') + '</p>';
+        } else {
+          emptyHtml += '<p style="font-size:12px;color:var(--ink-muted);line-height:1.5;margin:8px 0;">No graph nodes are available yet. Build is manual so opening this tab never starts LLM-backed work by itself.</p>';
+          emptyHtml += '<button class="btn btn-primary" style="margin-top:14px;width:100%;font-size:11px;padding:8px;" data-action="build-graph">Build Graph</button>';
+        }
+        sb.innerHTML = emptyHtml;
+        renderGraphEmptyState();
+        return;
+      }
+      renderGraphEmptyState();
 
       var html = '<input type="text" class="graph-search" id="graph-search" placeholder="Search nodes...">';
 
@@ -3822,6 +3881,10 @@
         return;
       }
       if (action === 'rebuild-graph') {
+        rebuildGraph();
+        return;
+      }
+      if (action === 'build-graph') {
         rebuildGraph();
         return;
       }
