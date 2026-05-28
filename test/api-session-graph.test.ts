@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { registerApiTriggers } from "../src/triggers/api.js";
+import { KV } from "../src/state/schema.js";
+import type { Session } from "../src/types.js";
 
 const configState = vi.hoisted(() => ({ graphExtractionEnabled: false }));
 
@@ -65,6 +67,7 @@ function mockSdk() {
       },
       trigger: async (input: { function_id: string; payload: unknown }) => {
         triggers.push(input);
+        if (input.function_id === "event::session::stopped") return { success: true };
         if (input.function_id === "mem::graph-query") return { nodes: [{ id: "node_1" }], edges: [], depth: 0 };
         if (input.function_id === "mem::graph-stats") return { totalNodes: 1, totalEdges: 0, nodesByType: { file: 1 }, edgesByType: {} };
         if (input.function_id === "mem::graph-extract") return { success: true, nodesAdded: 1, edgesAdded: 0 };
@@ -72,6 +75,17 @@ function mockSdk() {
         return {};
       },
     },
+  };
+}
+
+function makeSession(sessionId: string): Session {
+  return {
+    id: sessionId,
+    project: "agentmemory",
+    cwd: "/repo/agentmemory",
+    startedAt: "2026-02-01T10:00:00Z",
+    status: "active",
+    observationCount: 1,
   };
 }
 
@@ -166,6 +180,28 @@ describe("API session and graph integration", () => {
     expect(triggers).toContainEqual({
       function_id: "mem::graph-build",
       payload: { batchSize: 7, reset: true },
+    });
+  });
+
+  it("session/end triggers stopped-session recovery work", async () => {
+    const sessionId = "ses_1";
+    const kv = mockKV();
+    await kv.set(KV.sessions, sessionId, makeSession(sessionId));
+    const { sdk, handlers, triggers } = mockSdk();
+    registerApiTriggers(sdk as never, kv as never);
+
+    const response = (await handlers.get("api::session::end")!({
+      body: { sessionId },
+      headers: {},
+    })) as { status_code: number; body: unknown };
+
+    expect(response.status_code).toBe(200);
+    expect(triggers).toContainEqual({
+      function_id: "event::session::stopped",
+      payload: { sessionId },
+    });
+    await expect(kv.get<Session>(KV.sessions, sessionId)).resolves.toMatchObject({
+      status: "completed",
     });
   });
 });

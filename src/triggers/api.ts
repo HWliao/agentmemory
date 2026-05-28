@@ -643,6 +643,10 @@ export function registerApiTriggers(
         { type: "set", path: "endedAt", value: new Date().toISOString() },
         { type: "set", path: "status", value: "completed" },
       ]);
+      await sdk.trigger({
+        function_id: "event::session::stopped",
+        payload: { sessionId },
+      });
       return { status_code: 200, body: { success: true } };
     },
   );

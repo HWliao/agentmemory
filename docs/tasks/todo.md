@@ -68,19 +68,19 @@
 
 ### Task 3: Route Session End Through Session Stopped Recovery
 
-- [ ] Update `/agentmemory/session/end` to trigger `event::session::stopped`.
-- [ ] Preserve session status update to `completed` with `endedAt`.
-- [ ] Keep `/summarize` endpoint behavior unchanged.
+- [x] Update `/agentmemory/session/end` to trigger `event::session::stopped`.
+- [x] Preserve session status update to `completed` with `endedAt`.
+- [x] Keep `/summarize` endpoint behavior unchanged.
 
 **Acceptance criteria:**
 
-- [ ] `/session/end` validates `sessionId` as before.
-- [ ] `/session/end` triggers `event::session::stopped` with `{ sessionId }`.
-- [ ] Regression test proves stopped-session recovery work is invoked.
+- [x] `/session/end` validates `sessionId` as before.
+- [x] `/session/end` triggers `event::session::stopped` with `{ sessionId }`.
+- [x] Regression test proves stopped-session recovery work is invoked.
 
 **Verify:**
 
-- [ ] `npm test -- --run test/api-session-graph.test.ts`
+- [x] `npm test -- --run test/api-session-graph.test.ts`
 
 **Dependencies:** Task 1.
 
