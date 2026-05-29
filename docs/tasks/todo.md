@@ -176,19 +176,19 @@
 
 ### Task 7: End OpenCode Session On Compaction
 
-- [ ] Update `session.compacted` handler to post `/session/end` for current session.
-- [ ] Preserve existing summarize and observe behavior unless implementation proves summarize becomes redundant.
-- [ ] Do not call graph endpoints directly from OpenCode.
+- [x] Update `session.compacted` handler to post `/session/end` for current session.
+- [x] Preserve existing summarize and observe behavior unless implementation proves summarize becomes redundant.
+- [x] Do not call graph endpoints directly from OpenCode.
 
 **Acceptance criteria:**
 
-- [ ] `session.compacted` posts `/session/end`.
-- [ ] `session_compacted` observation is still recorded.
-- [ ] Backend remains the only graph extraction trigger.
+- [x] `session.compacted` posts `/session/end`.
+- [x] `session_compacted` observation is still recorded.
+- [x] Backend remains the only graph extraction trigger.
 
 **Verify:**
 
-- [ ] `npm test -- --run test/opencode-auto-context.test.ts`
+- [x] `npm test -- --run test/opencode-auto-context.test.ts`
 - [ ] Or run a new focused OpenCode lifecycle test if added.
 
 **Dependencies:** Task 3.

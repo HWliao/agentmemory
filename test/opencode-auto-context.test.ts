@@ -19,6 +19,13 @@ describe("OpenCode plugin auto-context injection (#431)", () => {
     return plugin.slice(start, end);
   }
 
+  function sessionCompactedBlock(): string {
+    const start = plugin.indexOf('if (type === "session.compacted")');
+    const end = plugin.indexOf("// ── session.updated", start);
+    if (start === -1 || end === -1) throw new Error("session.compacted block not found");
+    return plugin.slice(start, end);
+  }
+
   it("captures context returned by POST /session/start", () => {
     expect(plugin).toMatch(/startContextCache\s*=\s*new Map<string,\s*string>/);
     expect(plugin).toMatch(
@@ -42,6 +49,15 @@ describe("OpenCode plugin auto-context injection (#431)", () => {
     expect(sessionEndIndex).toBeGreaterThanOrEqual(0);
     expect(sessionStartIndex).toBeGreaterThanOrEqual(0);
     expect(sessionEndIndex).toBeLessThan(sessionStartIndex);
+  });
+
+  it("ends the current session after compaction without bypassing backend graph extraction", () => {
+    const block = sessionCompactedBlock();
+
+    expect(block).toContain('post("/summarize", { sessionId: sid })');
+    expect(block).toContain('observe(sid, "session_compacted", {})');
+    expect(block).toContain('post("/session/end", { sessionId: sid })');
+    expect(plugin).not.toMatch(/post(?:Json)?\(["']\/graph\//);
   });
 
   it("chat.system.transform reads cached context first, falls back to /context", () => {

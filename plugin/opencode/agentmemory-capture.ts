@@ -238,6 +238,11 @@ export const AgentmemoryCapturePlugin: Plugin = async (ctx) => {
         if (sid) {
           await post("/summarize", { sessionId: sid });
           await observe(sid, "session_compacted", {});
+          await post("/session/end", { sessionId: sid });
+          if (sid === activeSessionId) activeSessionId = null;
+          pruneSessionMaps(sid);
+          startContextCache.delete(sid);
+          contextInjectedSessions.delete(sid);
         }
       }
 
