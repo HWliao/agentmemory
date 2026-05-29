@@ -227,19 +227,19 @@
 
 ### Task 9: Update Endpoint Counts and Key Endpoint Docs
 
-- [ ] Update `src/index.ts` REST endpoint count.
-- [ ] Update `README.md` endpoint count.
-- [ ] Update `AGENTS.md` REST endpoint count.
-- [ ] Add `/agentmemory/graph/build` to key endpoint docs if appropriate.
+- [x] Update `src/index.ts` REST endpoint count.
+- [x] Update `README.md` endpoint count.
+- [x] Update `AGENTS.md` REST endpoint count.
+- [x] Add `/agentmemory/graph/build` to key endpoint docs if appropriate.
 
 **Acceptance criteria:**
 
-- [ ] `test/consistency.test.ts` passes.
-- [ ] README and AGENTS counts match `src/triggers/api.ts`.
+- [x] `test/consistency.test.ts` passes.
+- [x] README and AGENTS counts match `src/triggers/api.ts`.
 
 **Verify:**
 
-- [ ] `npm test -- --run test/consistency.test.ts`
+- [x] `npm test -- --run test/consistency.test.ts`
 
 **Dependencies:** Task 1.
 
