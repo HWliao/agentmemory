@@ -11,6 +11,21 @@ function extractLoadGraph(source: string): string {
   return match[1];
 }
 
+function extractFunction(source: string, name: string): string {
+  const start = source.indexOf(`function ${name}(`);
+  if (start === -1) throw new Error(`${name} function not found`);
+  const bodyStart = source.indexOf("{", start);
+  let depth = 0;
+  for (let i = bodyStart; i < source.length; i += 1) {
+    if (source[i] === "{") depth += 1;
+    if (source[i] === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(bodyStart + 1, i);
+    }
+  }
+  throw new Error(`${name} body not found`);
+}
+
 describe("viewer graph empty state", () => {
   it("does not automatically build graph data while loading the Graph tab", () => {
     const loadGraph = extractLoadGraph(viewerSource());
@@ -24,5 +39,16 @@ describe("viewer graph empty state", () => {
     expect(source).toContain('data-action="build-graph"');
     expect(source).toContain("Graph extraction is disabled");
     expect(source).toContain("graph_extraction_disabled");
+  });
+
+  it("opens a rebuild modal before graph/build can run", () => {
+    const source = viewerSource();
+    const rebuildGraph = extractFunction(source, "rebuildGraph");
+
+    expect(rebuildGraph).not.toContain("apiPost('graph/build'");
+    expect(source).toContain('data-action="confirm-rebuild-graph"');
+    expect(source).toContain('name="graph-rebuild-mode" value="incremental" checked');
+    expect(source).toContain('name="graph-rebuild-mode" value="full"');
+    expect(source).toContain("can be expensive and slow");
   });
 });

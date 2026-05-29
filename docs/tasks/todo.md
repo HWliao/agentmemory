@@ -117,23 +117,23 @@
 
 ### Task 5: Add Rebuild Modal With Incremental and Full Options
 
-- [ ] Add modal flow for `Rebuild Graph`.
-- [ ] Add `Incremental` option as the default.
-- [ ] Add explicit `Full` option.
-- [ ] Add warning text that extraction can be expensive and slow because it may call the configured LLM provider.
-- [ ] Send `reset: false` or omit reset for incremental.
-- [ ] Send `reset: true` for full.
+- [x] Add modal flow for `Rebuild Graph`.
+- [x] Add `Incremental` option as the default.
+- [x] Add explicit `Full` option.
+- [x] Add warning text that extraction can be expensive and slow because it may call the configured LLM provider.
+- [x] Send `reset: false` or omit reset for incremental.
+- [x] Send `reset: true` for full.
 
 **Acceptance criteria:**
 
-- [ ] Clicking `Rebuild Graph` opens modal before any API call.
-- [ ] Cancel and overlay close make no API call.
-- [ ] Incremental is selected by default.
-- [ ] Full is not selected unless the user explicitly selects it.
+- [x] Clicking `Rebuild Graph` opens modal before any API call.
+- [x] Cancel and overlay close make no API call.
+- [x] Incremental is selected by default.
+- [x] Full is not selected unless the user explicitly selects it.
 
 **Verify:**
 
-- [ ] Source check for `confirm-rebuild-graph` or equivalent action.
+- [x] Source check for `confirm-rebuild-graph` or equivalent action.
 - [ ] Manual smoke: cancel, incremental confirm, full confirm.
 
 **Dependencies:** Task 4.

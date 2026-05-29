@@ -2142,10 +2142,24 @@
       graphSim.raf = requestAnimationFrame(runSimulation);
     }
 
-    async function rebuildGraph() {
+    function rebuildGraph() {
+      var modal = document.getElementById('modal');
+      var overlay = document.getElementById('modal-overlay');
+      modal.innerHTML = '<h3>Rebuild Graph</h3>' +
+        '<p>Graph extraction can be expensive and slow because it may call the configured LLM provider. Choose an incremental update unless you need to discard and rebuild all graph data.</p>' +
+        '<label style="display:block;margin-bottom:10px;font-size:13px;color:var(--ink-muted);"><input type="radio" name="graph-rebuild-mode" value="incremental" checked> Incremental: only process observations that are not already represented in the graph.</label>' +
+        '<label style="display:block;margin-bottom:16px;font-size:13px;color:var(--ink-muted);"><input type="radio" name="graph-rebuild-mode" value="full"> Full: clear existing graph data and rebuild from all stored observations.</label>' +
+        '<div class="modal-actions"><button type="button" class="btn" data-action="close-modal">Cancel</button><button type="button" class="btn btn-danger" data-action="confirm-rebuild-graph">Rebuild Graph</button></div>';
+      overlay.classList.add('open');
+    }
+
+    async function confirmRebuildGraph() {
+      var selected = document.querySelector('input[name="graph-rebuild-mode"]:checked');
+      var payload = selected && selected.value === 'full' ? { reset: true } : {};
+      closeModal();
       var sb = document.getElementById('graph-sidebar');
       if (sb) sb.innerHTML = '<h3>Graph</h3><p style="font-size:12px;color:var(--ink-faint);font-style:italic;">Rebuilding graph from observations...</p>';
-      await apiPost('graph/build', {});
+      await apiPost('graph/build', payload);
       state.graph.loaded = false;
       loadGraph();
     }
@@ -3907,6 +3921,10 @@
       if (action === 'confirm-delete-memory') {
         var memoryId = target.getAttribute('data-memory-id');
         if (memoryId) confirmDeleteMemory(memoryId);
+        return;
+      }
+      if (action === 'confirm-rebuild-graph') {
+        confirmRebuildGraph();
         return;
       }
       if (action === 'timeline-filter') {
