@@ -144,7 +144,7 @@
 
 ## Checkpoint 2: Backend and Viewer Flow
 
-- [ ] `npm test -- --run test/graph.test.ts test/api-session-graph.test.ts`
+- [x] `npm test -- --run test/graph.test.ts test/api-session-graph.test.ts`
 - [ ] Manual smoke Graph tab empty state.
 - [ ] Manual smoke Rebuild modal.
 
