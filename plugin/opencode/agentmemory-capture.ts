@@ -178,16 +178,23 @@ export const AgentmemoryCapturePlugin: Plugin = async (ctx) => {
       // ── session.created ──
       if (type === "session.created") {
         const info = props.info as Record<string, unknown> | undefined;
+        const previousSessionId = activeSessionId;
         activeSessionId = (info?.id as string) || props.sessionID || null;
         if (!activeSessionId) return;
-        stashedFiles.set(activeSessionId, new Set());
-        seenSubtaskIds.delete(activeSessionId);
-        seenToolCallIds.delete(activeSessionId);
-        contextInjectedSessions.delete(activeSessionId);
         // Snapshot the session id locally — `activeSessionId` is mutable
         // and another `session.created` event during the await could
         // rebind it, causing context to be cached against the wrong key.
         const sessionId = activeSessionId;
+        if (previousSessionId && previousSessionId !== sessionId) {
+          await post("/session/end", { sessionId: previousSessionId });
+          pruneSessionMaps(previousSessionId);
+          startContextCache.delete(previousSessionId);
+          contextInjectedSessions.delete(previousSessionId);
+        }
+        stashedFiles.set(sessionId, new Set());
+        seenSubtaskIds.delete(sessionId);
+        seenToolCallIds.delete(sessionId);
+        contextInjectedSessions.delete(sessionId);
         const startResult = await postJson("/session/start", {
           sessionId,
           title: info?.title ?? null,

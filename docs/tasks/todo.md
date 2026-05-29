@@ -152,19 +152,19 @@
 
 ### Task 6: End Previous OpenCode Session On New Session Creation
 
-- [ ] Detect previous `activeSessionId` before assigning the new session ID.
-- [ ] If previous ID exists and differs from the new ID, post `/session/end` for the previous ID.
-- [ ] Continue to start and cache context for the new session.
+- [x] Detect previous `activeSessionId` before assigning the new session ID.
+- [x] If previous ID exists and differs from the new ID, post `/session/end` for the previous ID.
+- [x] Continue to start and cache context for the new session.
 
 **Acceptance criteria:**
 
-- [ ] New `session.created` for a different ID ends old session first.
-- [ ] Same ID does not trigger self-end.
-- [ ] Existing start context cache behavior remains intact.
+- [x] New `session.created` for a different ID ends old session first.
+- [x] Same ID does not trigger self-end.
+- [x] Existing start context cache behavior remains intact.
 
 **Verify:**
 
-- [ ] `npm test -- --run test/opencode-auto-context.test.ts`
+- [x] `npm test -- --run test/opencode-auto-context.test.ts`
 - [ ] Or run a new focused OpenCode lifecycle test if added.
 
 **Dependencies:** Task 3.

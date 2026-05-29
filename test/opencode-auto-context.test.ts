@@ -12,6 +12,13 @@ describe("OpenCode plugin auto-context injection (#431)", () => {
     "utf-8",
   );
 
+  function sessionCreatedBlock(): string {
+    const start = plugin.indexOf('if (type === "session.created")');
+    const end = plugin.indexOf("// ── session.idle", start);
+    if (start === -1 || end === -1) throw new Error("session.created block not found");
+    return plugin.slice(start, end);
+  }
+
   it("captures context returned by POST /session/start", () => {
     expect(plugin).toMatch(/startContextCache\s*=\s*new Map<string,\s*string>/);
     expect(plugin).toMatch(
@@ -22,6 +29,19 @@ describe("OpenCode plugin auto-context injection (#431)", () => {
     expect(plugin).toMatch(
       /const\s+sessionId\s*=\s*activeSessionId[\s\S]*?startContextCache\.set\(sessionId/,
     );
+  });
+
+  it("ends a previous active session before starting a different new session", () => {
+    const block = sessionCreatedBlock();
+    const sessionEndIndex = block.indexOf('post("/session/end"');
+    const sessionStartIndex = block.indexOf('postJson("/session/start"');
+
+    expect(block).toMatch(/const\s+previousSessionId\s*=\s*activeSessionId/);
+    expect(block).toMatch(/previousSessionId\s*&&\s*previousSessionId\s*!==\s*sessionId/);
+    expect(block).toContain('post("/session/end", { sessionId: previousSessionId })');
+    expect(sessionEndIndex).toBeGreaterThanOrEqual(0);
+    expect(sessionStartIndex).toBeGreaterThanOrEqual(0);
+    expect(sessionEndIndex).toBeLessThan(sessionStartIndex);
   });
 
   it("chat.system.transform reads cached context first, falls back to /context", () => {
