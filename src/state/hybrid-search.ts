@@ -6,6 +6,7 @@ import type {
   CompressedObservation,
   Memory,
   QueryExpansion,
+  Session,
 } from "../types.js";
 import { memoryToObservation } from "./memory-utils.js";
 import type { StateKV } from "./kv.js";
@@ -125,6 +126,8 @@ export class HybridSearch {
       }
     }
 
+    graphResults = await this.resolveGraphResultSessions(graphResults);
+
     const scores = new Map<
       string,
       {
@@ -237,6 +240,43 @@ export class HybridSearch {
     }
 
     return enriched.slice(0, limit);
+  }
+
+  private async resolveGraphResultSessions(
+    results: GraphRetrievalResult[],
+  ): Promise<GraphRetrievalResult[]> {
+    const unresolvedIds = new Set(
+      results
+        .filter((r) => !r.sessionId)
+        .map((r) => r.obsId),
+    );
+    if (unresolvedIds.size === 0) return results;
+
+    const sessions = await this.kv.list<Session>(KV.sessions).catch(() => []);
+    if (sessions.length === 0) return results;
+
+    const obsSessions = new Map<string, string>();
+    for (const session of sessions) {
+      if (unresolvedIds.size === 0) break;
+      await Promise.all(
+        Array.from(unresolvedIds).map(async (obsId) => {
+          const obs = await this.kv
+            .get<CompressedObservation>(KV.observations(session.id), obsId)
+            .catch(() => null);
+          if (obs) {
+            obsSessions.set(obsId, obs.sessionId || session.id);
+            unresolvedIds.delete(obsId);
+          }
+        }),
+      );
+    }
+
+    if (obsSessions.size === 0) return results;
+    return results.map((r) => {
+      if (r.sessionId) return r;
+      const sessionId = obsSessions.get(r.obsId);
+      return sessionId ? { ...r, sessionId } : r;
+    });
   }
 
   private diversifyBySession(

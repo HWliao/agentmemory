@@ -1,7 +1,14 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { HybridSearch } from "../src/state/hybrid-search.js";
 import { SearchIndex } from "../src/state/search-index.js";
-import type { CompressedObservation, EmbeddingProvider } from "../src/types.js";
+import { KV } from "../src/state/schema.js";
+import type {
+  CompressedObservation,
+  EmbeddingProvider,
+  GraphEdge,
+  GraphNode,
+  Session,
+} from "../src/types.js";
 
 function makeObs(
   overrides: Partial<CompressedObservation> = {},
@@ -40,6 +47,50 @@ function mockKV() {
       const entries = store.get(scope);
       return entries ? (Array.from(entries.values()) as T[]) : [];
     },
+  };
+}
+
+function makeSession(id = "ses_1"): Session {
+  return {
+    id,
+    project: "agentmemory",
+    cwd: "/repo",
+    startedAt: new Date().toISOString(),
+    status: "completed",
+    observationCount: 1,
+  };
+}
+
+function makeGraphNode(
+  id: string,
+  name: string,
+  sourceObservationIds: string[],
+): GraphNode {
+  return {
+    id,
+    type: "function",
+    name,
+    properties: {},
+    sourceObservationIds,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function makeGraphEdge(
+  id: string,
+  sourceNodeId: string,
+  targetNodeId: string,
+  sourceObservationIds: string[],
+): GraphEdge {
+  return {
+    id,
+    type: "related_to",
+    sourceNodeId,
+    targetNodeId,
+    weight: 0.8,
+    sourceObservationIds,
+    createdAt: new Date().toISOString(),
+    isLatest: true,
   };
 }
 
@@ -179,5 +230,48 @@ describe("HybridSearch", () => {
     expect(results[0].observation.id).toBe("mem_abc");
     expect(results[0].observation.narrative).toBe("Test memory for search");
     expect(results[0].observation.concepts).toEqual(["test", "search"]);
+  });
+
+  it("surfaces graph-only entity matches with graph score and context", async () => {
+    const obs = makeObs({
+      id: "obs_graph",
+      sessionId: "ses_graph",
+      title: "Reliability guardrails",
+      narrative: "Added fallback handling around outbound request failures",
+      concepts: ["resilience", "fallbacks"],
+      facts: ["Protected outbound requests from cascading failures"],
+    });
+    await kv.set(KV.sessions, "ses_graph", makeSession("ses_graph"));
+    await kv.set(KV.observations("ses_graph"), "obs_graph", obs);
+    await kv.set(
+      KV.graphNodes,
+      "node_circuit_breaker",
+      makeGraphNode("node_circuit_breaker", "CircuitBreakerManager", ["obs_graph"]),
+    );
+    await kv.set(
+      KV.graphNodes,
+      "node_retry_policy",
+      makeGraphNode("node_retry_policy", "RetryPolicy", ["obs_graph"]),
+    );
+    await kv.set(
+      KV.graphEdges,
+      "edge_circuit_breaker_retry",
+      makeGraphEdge(
+        "edge_circuit_breaker_retry",
+        "node_circuit_breaker",
+        "node_retry_policy",
+        ["obs_graph"],
+      ),
+    );
+
+    const hybrid = new HybridSearch(bm25, null, null, kv as never);
+    const results = await hybrid.search("CircuitBreakerManager");
+
+    expect(results.length).toBe(1);
+    expect(results[0].observation.id).toBe("obs_graph");
+    expect(results[0].bm25Score).toBe(0);
+    expect(results[0].graphScore).toBeGreaterThan(0);
+    expect(results[0].graphContext).toContain("CircuitBreakerManager");
+    expect(results[0].combinedScore).toBeGreaterThan(0);
   });
 });

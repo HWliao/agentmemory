@@ -202,20 +202,20 @@
 
 ### Task 8: Prove Hybrid Search Uses Graph Results
 
-- [ ] Add graph nodes and edges to test KV.
-- [ ] Store matching compressed observation.
-- [ ] Search for an entity that matches graph data.
-- [ ] Assert returned result has `graphScore > 0` or graph context.
+- [x] Add graph nodes and edges to test KV.
+- [x] Store matching compressed observation.
+- [x] Search for an entity that matches graph data.
+- [x] Assert returned result has `graphScore > 0` or graph context.
 
 **Acceptance criteria:**
 
-- [ ] Test is deterministic and does not require LLM/network.
-- [ ] Graph result participates in `HybridSearch` result scoring.
-- [ ] Existing BM25-only tests continue passing.
+- [x] Test is deterministic and does not require LLM/network.
+- [x] Graph result participates in `HybridSearch` result scoring.
+- [x] Existing BM25-only tests continue passing.
 
 **Verify:**
 
-- [ ] `npm test -- --run test/hybrid-search.test.ts`
+- [x] `npm test -- --run test/hybrid-search.test.ts`
 
 **Dependencies:** None.
 
