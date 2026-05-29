@@ -251,24 +251,26 @@
 
 ### Task 10: Final Verification
 
-- [ ] Run targeted graph/API tests.
-- [ ] Run retrieval and OpenCode tests.
-- [ ] Run consistency tests.
-- [ ] Run full non-integration test suite.
-- [ ] Run build.
+- [x] Run targeted graph/API tests.
+- [x] Run retrieval and OpenCode tests.
+- [x] Run consistency tests.
+- [x] Run full non-integration test suite.
+- [x] Run build.
 
 **Acceptance criteria:**
 
-- [ ] All targeted tests pass.
+- [x] All targeted tests pass.
 - [ ] `npm test` passes.
-- [ ] `npm run build` passes.
+- [x] `npm run build` passes.
 
 **Verify:**
 
-- [ ] `npm test -- --run test/graph.test.ts test/api-session-graph.test.ts`
-- [ ] `npm test -- --run test/hybrid-search.test.ts test/opencode-auto-context.test.ts test/consistency.test.ts`
+- [x] `npm test -- --run test/graph.test.ts test/api-session-graph.test.ts`
+- [x] `npm test -- --run test/hybrid-search.test.ts test/opencode-auto-context.test.ts test/consistency.test.ts`
 - [ ] `npm test`
-- [ ] `npm run build`
+- [x] `npm run build`
+
+**Full test note:** `npm test` was run and failed locally with 12 failed files / 39 failed tests. Failures were outside the targeted graph/session/viewer/search/OpenCode areas and concentrated in environment/platform-sensitive tests: local connect adapter config detection, OPENAI/Ollama environment leakage, Windows path separator expectations, symlink/mock filesystem behavior, and existing auto-compress/slots env gates.
 
 **Dependencies:** Tasks 1-9.
 
