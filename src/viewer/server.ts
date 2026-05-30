@@ -28,6 +28,22 @@ function loadViewerFavicon(): Buffer | null {
   return null;
 }
 
+function loadViewerForceGraphBundle(): Buffer | null {
+  const base = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    join(base, "viewer", "force-graph.min.js"),
+    join(base, "force-graph.min.js"),
+    join(base, "..", "viewer", "force-graph.min.js"),
+    join(base, "..", "..", "node_modules", "force-graph", "dist", "force-graph.min.js"),
+  ];
+  for (const path of candidates) {
+    try {
+      return readFileSync(path);
+    } catch {}
+  }
+  return null;
+}
+
 const ALLOWED_ORIGINS = (
   process.env.VIEWER_ALLOWED_ORIGINS ||
   "http://localhost:3111,http://localhost:3113,http://127.0.0.1:3111,http://127.0.0.1:3113"
@@ -130,6 +146,21 @@ function readBody(req: IncomingMessage): Promise<string> {
 }
 
 const MAX_VIEWER_PORT_RETRIES = 10;
+const VIEWER_PROXY_TIMEOUT_MS = 10_000;
+const VIEWER_PROXY_LONG_TIMEOUT_MS = 300_000;
+const LONG_RUNNING_PROXY_PATHS = new Set([
+  "/agentmemory/graph/build",
+  "/agentmemory/session/end",
+  "/agentmemory/summarize",
+  "/agentmemory/replay/import-jsonl",
+]);
+
+export function viewerProxyTimeoutMs(pathname: string): number {
+  const pathOnly = pathname.split("?")[0] || pathname;
+  return LONG_RUNNING_PROXY_PATHS.has(pathOnly)
+    ? VIEWER_PROXY_LONG_TIMEOUT_MS
+    : VIEWER_PROXY_TIMEOUT_MS;
+}
 
 let boundViewerPort: number | null = null;
 let viewerSkipped = false;
@@ -225,6 +256,21 @@ export function startViewerServer(
       return;
     }
 
+    if (method === "GET" && pathname === "/force-graph.min.js") {
+      const script = loadViewerForceGraphBundle();
+      if (script) {
+        res.writeHead(200, {
+          "Content-Type": "application/javascript; charset=utf-8",
+          "Cache-Control": "public, max-age=3600",
+        });
+        res.end(script);
+        return;
+      }
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.end("force-graph bundle not found");
+      return;
+    }
+
     try {
       await proxyToRestApi(resolvedRestPort, pathname, qs, method, req, res, secret);
     } catch (err) {
@@ -311,7 +357,8 @@ async function proxyToRestApi(
   }
 
   const controller = new AbortController();
-  const fetchTimeout = setTimeout(() => controller.abort(), 10000);
+  const fetchTimeoutMs = viewerProxyTimeoutMs(upstreamPath);
+  const fetchTimeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
   let upstream: Response;
   try {
     upstream = await fetch(upstreamUrl, {

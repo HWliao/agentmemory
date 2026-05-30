@@ -167,6 +167,13 @@ function parseOptionalPositiveInt(value: unknown): number | undefined | null {
   return parsed;
 }
 
+function parseOptionalNonNegativeInt(value: unknown): number | undefined | null {
+  const parsed = parseOptionalFiniteNumber(value);
+  if (parsed === undefined || parsed === null) return parsed;
+  if (!Number.isInteger(parsed) || parsed < 0) return null;
+  return parsed;
+}
+
 export function registerApiTriggers(
   sdk: ISdk,
   kv: StateKV,
@@ -1360,13 +1367,38 @@ export function registerApiTriggers(
         nodeType?: string;
         maxDepth?: number;
         query?: string;
+        offset?: number;
+        limit?: number;
       }>,
     ): Promise<Response> => {
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
       if (!isGraphExtractionEnabled()) return graphDisabledResponse("query");
       try {
-        const result = await sdk.trigger({ function_id: "mem::graph-query", payload: req.body || {} });
+        const body = (req.body ?? {}) as Record<string, unknown>;
+        const maxDepth = parseOptionalPositiveInt(body.maxDepth);
+        if (maxDepth === null) {
+          return { status_code: 400, body: { error: "maxDepth must be a positive integer" } };
+        }
+        const offset = parseOptionalNonNegativeInt(body.offset);
+        if (offset === null) {
+          return { status_code: 400, body: { error: "offset must be a non-negative integer" } };
+        }
+        const limit = parseOptionalPositiveInt(body.limit);
+        if (limit === null) {
+          return { status_code: 400, body: { error: "limit must be a positive integer" } };
+        }
+        const payload: Record<string, unknown> = {};
+        const query = asNonEmptyString(body.query);
+        if (query) payload.query = query;
+        const startNodeId = asNonEmptyString(body.startNodeId);
+        if (startNodeId) payload.startNodeId = startNodeId;
+        const nodeType = asNonEmptyString(body.nodeType);
+        if (nodeType) payload.nodeType = nodeType;
+        if (maxDepth !== undefined) payload.maxDepth = maxDepth;
+        if (offset !== undefined) payload.offset = offset;
+        if (limit !== undefined) payload.limit = limit;
+        const result = await sdk.trigger({ function_id: "mem::graph-query", payload });
         return { status_code: 200, body: result };
       } catch {
         return graphDisabledResponse("query");

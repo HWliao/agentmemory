@@ -183,6 +183,60 @@ describe("API session and graph integration", () => {
     });
   });
 
+  it("graph/query forwards only whitelisted query and paging fields", async () => {
+    configState.graphExtractionEnabled = true;
+    const kv = mockKV();
+    const { sdk, handlers, triggers } = mockSdk();
+    registerApiTriggers(sdk as never, kv as never);
+
+    const response = (await handlers.get("api::graph-query")!({
+      body: {
+        query: "index",
+        startNodeId: "gn_1",
+        nodeType: "file",
+        maxDepth: 2,
+        offset: 100,
+        limit: 50,
+        ignored: "field",
+      },
+      headers: {},
+    })) as { status_code: number; body: unknown };
+
+    expect(response.status_code).toBe(200);
+    expect(triggers).toContainEqual({
+      function_id: "mem::graph-query",
+      payload: {
+        query: "index",
+        startNodeId: "gn_1",
+        nodeType: "file",
+        maxDepth: 2,
+        offset: 100,
+        limit: 50,
+      },
+    });
+  });
+
+  it("graph/query rejects invalid paging fields", async () => {
+    configState.graphExtractionEnabled = true;
+    const kv = mockKV();
+    const { sdk, handlers } = mockSdk();
+    registerApiTriggers(sdk as never, kv as never);
+
+    await expect(
+      handlers.get("api::graph-query")!({ body: { offset: -1 }, headers: {} }),
+    ).resolves.toEqual({
+      status_code: 400,
+      body: { error: "offset must be a non-negative integer" },
+    });
+
+    await expect(
+      handlers.get("api::graph-query")!({ body: { limit: 0 }, headers: {} }),
+    ).resolves.toEqual({
+      status_code: 400,
+      body: { error: "limit must be a positive integer" },
+    });
+  });
+
   it("session/end triggers stopped-session recovery work", async () => {
     const sessionId = "ses_1";
     const kv = mockKV();

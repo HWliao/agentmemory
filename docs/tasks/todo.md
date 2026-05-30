@@ -1,284 +1,263 @@
-# Task List: Graph Extraction and Viewer Rebuild Reliability
+# Task List: Graph Viewer Performance and Incremental Loading
 
-## Phase 1: Backend Graph API Contract
+## Phase 1: Local force-graph Delivery
 
-### Task 1: Return Fixed Empty Responses When Graph Extraction Is Disabled
+### Task 1: Add Local force-graph Asset Pipeline
 
-- [x] Implement fixed disabled responses for `graph/query`, `graph/stats`, `graph/extract`, and `graph/build`.
-- [x] Register `POST /agentmemory/graph/build`.
-- [x] Ensure disabled graph paths do not call `mem::graph-*` provider-backed work.
-- [x] Whitelist `graph/build` request fields only.
+- [x] Add `force-graph` as the approved renderer dependency.
+- [x] Copy the local force-graph browser bundle into the Viewer build output.
+- [x] Ensure packaged/dist runs can resolve the local browser bundle.
+- [x] Confirm Viewer source contains no CDN URL for `force-graph`.
 
 **Acceptance criteria:**
 
-- [x] `graph/query` disabled response is `{ nodes: [], edges: [], depth: 0, skipped: true, reason: "graph_extraction_disabled" }`.
-- [x] `graph/stats` disabled response has zero counts plus `skipped: true` and `reason`.
-- [x] `graph/extract` disabled response has `success: false`, zero counts, `skipped: true`, and `reason`.
-- [x] `graph/build` disabled response has `success: false`, `observationsProcessed: 0`, zero counts, `skipped: true`, and `reason`.
-- [x] `/agentmemory/graph/build` no longer returns 404.
+- [x] `force-graph` is declared in package dependencies.
+- [x] Build asset copy includes the local force-graph browser bundle.
+- [x] No Viewer HTML references `cdn.jsdelivr`, `unpkg`, or other remote graph script origins.
 
 **Verify:**
 
-- [x] `npm test -- --run test/api-session-graph.test.ts`
-- [x] `npm test -- --run test/consistency.test.ts`
-
-**Dependencies:** None.
+- [x] `npm run build`
 
 **Files:**
 
-- `src/triggers/api.ts`
-- `test/api-session-graph.test.ts`
-- `src/index.ts`
-- `README.md`
-- `AGENTS.md`
+- `package.json`
+- `package-lock.json`
+- `scripts/copy-build-assets.mjs`
 
-### Task 2: Implement Graph Build Backfill From Existing Observations
+### Task 2: Serve Local Viewer Script Asset Under CSP
 
-- [x] Add `mem::graph-build`.
-- [x] Collect compressed observations from stored sessions.
-- [x] Process observations in batches.
-- [x] Support incremental default behavior.
-- [x] Support explicit full rebuild with `reset: true`.
+- [x] Serve the local force-graph browser script from the Viewer server.
+- [x] Update CSP only enough to allow same-origin local script loading.
+- [x] Keep CDN script origins and unsafe inline script execution blocked.
+- [x] Add/update Viewer security tests for the script route and CSP.
 
 **Acceptance criteria:**
 
-- [x] Add a red `graph-build extracts graph data from stored observations` test, then make it pass.
-- [x] Build response includes `success`, `observationsProcessed`, `nodesAdded`, and `edgesAdded`.
-- [x] Empty observation corpus returns success with zero processed/added counts.
-- [x] Existing graph extraction merge behavior remains unchanged.
+- [x] Local force-graph asset route returns JavaScript content type.
+- [x] CSP permits local script loading without allowing CDN origins.
+- [x] Existing favicon route and host allowlist behavior still pass.
 
 **Verify:**
 
-- [x] `npm test -- --run test/graph.test.ts`
+- [x] `npm test -- --run test/viewer-security.test.ts`
+- [x] `npm run build`
 
-**Dependencies:** Task 1.
+**Files:**
+
+- `src/viewer/server.ts`
+- `src/auth.ts`
+- `test/viewer-security.test.ts`
+
+## Checkpoint: Local Renderer Asset
+
+- [x] `npm test -- --run test/viewer-security.test.ts`
+- [x] `npm run build`
+- [x] Confirm no CDN script URL appears in Viewer source.
+
+## Phase 2: Renderer Replacement Shell
+
+### Task 3: Add Viewer Source Tests for Renderer Contract
+
+- [x] Assert the Viewer references local force-graph only.
+- [x] Replace obsolete Canvas cooldown expectations with force-graph/progressive-loading expectations.
+- [x] Preserve assertions for no automatic graph build.
+- [x] Preserve assertions for disabled graph messaging and rebuild confirmation.
+- [x] Assert loading control defaults are present.
+
+**Acceptance criteria:**
+
+- [x] Viewer tests describe the new renderer contract.
+- [x] No coverage is lost for disabled/no-auto-build behavior.
+
+**Verify:**
+
+- [x] `npm test -- --run test/viewer-graph-empty.test.ts test/viewer-graph-cooldown.test.ts`
+
+**Files:**
+
+- `test/viewer-graph-empty.test.ts`
+- `test/viewer-graph-cooldown.test.ts` or new Viewer graph performance test
+
+### Task 4: Replace Canvas Graph Runtime With force-graph Runtime
+
+- [x] Initialize a local `ForceGraph` instance in the Graph tab.
+- [x] Preserve the existing graph container, controls area, sidebar, empty state, disabled state, and rebuild modal flow.
+- [x] Wire zoom/recenter controls to force-graph APIs.
+- [x] Remove or disable the old custom `O(N^2)` simulation for Graph tab interactions.
+- [x] Keep opening the Graph tab from calling `graph/build` automatically.
+
+**Acceptance criteria:**
+
+- [x] Graph tab renders through force-graph.
+- [x] Empty and disabled states still render correctly.
+- [x] Existing build/rebuild confirmation behavior remains manual.
+- [x] Old Canvas simulation is not used for drag/pan/zoom.
+
+**Verify:**
+
+- [x] `npm test -- --run test/viewer-graph-empty.test.ts test/viewer-graph-cooldown.test.ts`
+- [x] Manual smoke: open Graph tab with disabled graph and with graph data.
+
+**Files:**
+
+- `src/viewer/index.html`
+- Viewer graph test file(s)
+
+## Checkpoint: Renderer Replacement
+
+- [x] `npm test -- --run test/viewer-graph-empty.test.ts test/viewer-graph-cooldown.test.ts`
+- [x] Manual smoke confirms Graph tab opens and disabled/empty states still work.
+- [x] Source review confirms renderer replacement stayed within the intended Graph UI surface.
+
+## Phase 3: Progressive Graph Loading
+
+### Task 5: Add Ordered Graph Query Paging If Needed
+
+- [x] Add optional graph query chunk fields only if the current full payload blocks first interaction.
+- [x] Preserve existing graph query behavior when chunk fields are omitted.
+- [x] Preserve current node order in paged responses.
+- [x] Include metadata for continuing until all nodes are loaded.
+- [x] Return edges so the Viewer can dedupe and show them as endpoints become available.
+- [x] Whitelist any new REST fields.
+- [x] Preserve disabled graph responses.
+- [x] Confirm StateKV has no storage-level pagination; Viewer uses one graph snapshot and client-side progressive rendering to avoid repeated full scans.
+
+**Acceptance criteria:**
+
+- [x] There is no final initialization cap; chunks continue until all graph nodes can load.
+- [x] Existing unpaged graph query callers remain compatible.
+- [x] Disabled graph behavior is unchanged.
+
+**Verify:**
+
+- [x] `npm test -- --run test/graph.test.ts test/api-session-graph.test.ts`
 
 **Files:**
 
 - `src/functions/graph.ts`
-- `test/graph.test.ts`
-
-## Checkpoint 1: Backend Graph Contract
-
-- [x] `npm test -- --run test/graph.test.ts test/api-session-graph.test.ts`
-- [x] `npm test -- --run test/consistency.test.ts`
-- [x] Review disabled graph response bodies before continuing.
-
-## Phase 2: Session Lifecycle Extraction
-
-### Task 3: Route Session End Through Session Stopped Recovery
-
-- [x] Update `/agentmemory/session/end` to trigger `event::session::stopped`.
-- [x] Preserve session status update to `completed` with `endedAt`.
-- [x] Keep `/summarize` endpoint behavior unchanged.
-
-**Acceptance criteria:**
-
-- [x] `/session/end` validates `sessionId` as before.
-- [x] `/session/end` triggers `event::session::stopped` with `{ sessionId }`.
-- [x] Regression test proves stopped-session recovery work is invoked.
-
-**Verify:**
-
-- [x] `npm test -- --run test/api-session-graph.test.ts`
-
-**Dependencies:** Task 1.
-
-**Files:**
-
 - `src/triggers/api.ts`
+- `test/graph.test.ts`
 - `test/api-session-graph.test.ts`
 
-## Phase 3: Viewer Graph UX
+### Task 6: Add Right-Sidebar Loading Configuration and Progressive Loader
 
-### Task 4: Replace Automatic Empty Graph Build With Confirmed Build Prompt
-
-- [x] Remove automatic `apiPost('graph/build', {})` from `loadGraph()`.
-- [x] Render an empty state when graph has no nodes.
-- [x] Show disabled/skipped messaging when graph APIs return disabled response bodies.
-- [x] Provide a user-initiated build action in empty state.
+- [x] Add sidebar controls for node batch size and interval.
+- [x] Default to 100 nodes every 100ms on each Viewer page load.
+- [x] Do not persist loading config across Viewer sessions.
+- [x] Continue progressive loading while users drag or pan.
+- [x] Show loading status without changing the overall layout.
+- [x] Feed force-graph progressively while preserving graph data order.
+- [x] Finish loading all nodes; do not stop at an initial cap.
 
 **Acceptance criteria:**
 
-- [x] Opening Graph tab never starts graph build without confirmation.
-- [x] Empty state explains graph extraction is optional and may be expensive.
-- [x] Disabled graph state does not suggest that data is actively building.
+- [x] Defaults reset on page reload.
+- [x] User-adjusted controls affect subsequent progressive loading cadence in the current page session.
+- [x] Loading continues during drag/pan.
+- [x] Graph order is preserved.
 
 **Verify:**
 
-- [x] Source check: `loadGraph()` does not directly call `apiPost('graph/build', {})`.
-- [ ] Manual smoke: open Graph tab with no graph data.
-
-**Dependencies:** Tasks 1 and 2.
+- [x] `npm test -- --run test/viewer-graph-empty.test.ts test/viewer-graph-cooldown.test.ts`
+- [x] Manual smoke: set batch/interval, reload page, confirm defaults reset, confirm loading continues during pan/drag.
 
 **Files:**
 
 - `src/viewer/index.html`
+- Viewer graph test file(s)
 
-### Task 5: Add Rebuild Modal With Incremental and Full Options
+## Checkpoint: Progressive Loading
 
-- [x] Add modal flow for `Rebuild Graph`.
-- [x] Add `Incremental` option as the default.
-- [x] Add explicit `Full` option.
-- [x] Add warning text that extraction can be expensive and slow because it may call the configured LLM provider.
-- [x] Send `reset: false` or omit reset for incremental.
-- [x] Send `reset: true` for full.
+- [x] `npm test -- --run test/graph.test.ts test/api-session-graph.test.ts` if backend paging was added.
+- [x] `npm test -- --run test/viewer-graph-empty.test.ts test/viewer-graph-cooldown.test.ts`
+- [x] Manual smoke confirms progressive loading defaults and sidebar controls.
+
+## Phase 4: Interaction Parity and Hot-Path Cleanup
+
+### Task 7: Restore Graph Selection, Search, Expand, and Filters on force-graph
+
+- [x] Node click selects a node and updates the selected node panel.
+- [x] Expand neighbors still calls `graph/query` with `startNodeId`.
+- [x] Merge expanded nodes/edges without duplicates.
+- [x] Search filters/focuses matching nodes while progressive loading is active.
+- [x] Type filters update displayed graph without changing sidebar structure.
+- [x] Tooltip and connection counts use cached degree/adjacency data.
+- [x] Focus fading uses cached neighbor sets instead of scanning all edges per node.
 
 **Acceptance criteria:**
 
-- [x] Clicking `Rebuild Graph` opens modal before any API call.
-- [x] Cancel and overlay close make no API call.
-- [x] Incremental is selected by default.
-- [x] Full is not selected unless the user explicitly selects it.
+- [x] Selection, expand, search, clear search, and type filters work on the force-graph renderer.
+- [x] Hot paths use cached graph indexes.
+- [x] Interactions remain responsive while progressive loading continues.
 
 **Verify:**
 
-- [x] Source check for `confirm-rebuild-graph` or equivalent action.
-- [ ] Manual smoke: cancel, incremental confirm, full confirm.
-
-**Dependencies:** Task 4.
+- [x] `npm test -- --run test/viewer-graph-empty.test.ts test/viewer-graph-cooldown.test.ts`
+- [x] Manual smoke: select node, expand node, search, clear search, toggle type filter.
 
 **Files:**
 
 - `src/viewer/index.html`
+- Viewer graph test file(s)
 
-## Checkpoint 2: Backend and Viewer Flow
+### Task 8: Apply Macaron Node Type Colors Without Layout/Global Style Changes
 
-- [x] `npm test -- --run test/graph.test.ts test/api-session-graph.test.ts`
-- [ ] Manual smoke Graph tab empty state.
-- [ ] Manual smoke Rebuild modal.
-
-## Phase 4: OpenCode Lifecycle Parity
-
-### Task 6: End Previous OpenCode Session On New Session Creation
-
-- [x] Detect previous `activeSessionId` before assigning the new session ID.
-- [x] If previous ID exists and differs from the new ID, post `/session/end` for the previous ID.
-- [x] Continue to start and cache context for the new session.
+- [x] Update only graph node type color values.
+- [x] Keep existing node type color families recognizable.
+- [x] Apply updated colors to nodes, legend, and filter dots.
+- [x] Avoid changing Viewer page layout, sidebar structure, typography, or global CSS variables.
+- [x] Verify light and dark mode readability.
 
 **Acceptance criteria:**
 
-- [x] New `session.created` for a different ID ends old session first.
-- [x] Same ID does not trigger self-end.
-- [x] Existing start context cache behavior remains intact.
+- [x] Node type colors use nearby macaron-style web-safe pastel colors.
+- [x] Overall Viewer layout and global styling remain unchanged.
+- [x] Legend and filter dots match node colors.
 
 **Verify:**
 
-- [x] `npm test -- --run test/opencode-auto-context.test.ts`
-- [ ] Or run a new focused OpenCode lifecycle test if added.
-
-**Dependencies:** Task 3.
+- [x] Source review or source test for no global layout/style rewrite.
+- [x] Manual visual smoke in light and dark mode.
 
 **Files:**
 
-- `plugin/opencode/agentmemory-capture.ts`
-- `test/opencode-auto-context.test.ts` or new focused test
+- `src/viewer/index.html`
+- Viewer graph test file(s), if adding color regression assertions
 
-### Task 7: End OpenCode Session On Compaction
+## Checkpoint: Interaction and Visual Polish
 
-- [x] Update `session.compacted` handler to post `/session/end` for current session.
-- [x] Preserve existing summarize and observe behavior unless implementation proves summarize becomes redundant.
-- [x] Do not call graph endpoints directly from OpenCode.
+- [x] `npm test -- --run test/viewer-graph-empty.test.ts test/viewer-graph-cooldown.test.ts`
+- [x] Manual smoke covers selection, search, expand, filters, and node colors.
+- [x] Confirm overall layout and global styling stayed unchanged.
 
-**Acceptance criteria:**
+## Phase 5: Final Verification
 
-- [x] `session.compacted` posts `/session/end`.
-- [x] `session_compacted` observation is still recorded.
-- [x] Backend remains the only graph extraction trigger.
+### Task 9: Final Build and Regression Verification
 
-**Verify:**
-
-- [x] `npm test -- --run test/opencode-auto-context.test.ts`
-- [ ] Or run a new focused OpenCode lifecycle test if added.
-
-**Dependencies:** Task 3.
-
-**Files:**
-
-- `plugin/opencode/agentmemory-capture.ts`
-- `test/opencode-auto-context.test.ts` or new focused test
-
-## Phase 5: Retrieval Verification
-
-### Task 8: Prove Hybrid Search Uses Graph Results
-
-- [x] Add graph nodes and edges to test KV.
-- [x] Store matching compressed observation.
-- [x] Search for an entity that matches graph data.
-- [x] Assert returned result has `graphScore > 0` or graph context.
-
-**Acceptance criteria:**
-
-- [x] Test is deterministic and does not require LLM/network.
-- [x] Graph result participates in `HybridSearch` result scoring.
-- [x] Existing BM25-only tests continue passing.
-
-**Verify:**
-
-- [x] `npm test -- --run test/hybrid-search.test.ts`
-
-**Dependencies:** None.
-
-**Files:**
-
-- `test/hybrid-search.test.ts`
-
-## Phase 6: Final Consistency and Verification
-
-### Task 9: Update Endpoint Counts and Key Endpoint Docs
-
-- [x] Update `src/index.ts` REST endpoint count.
-- [x] Update `README.md` endpoint count.
-- [x] Update `AGENTS.md` REST endpoint count.
-- [x] Add `/agentmemory/graph/build` to key endpoint docs if appropriate.
-
-**Acceptance criteria:**
-
-- [x] `test/consistency.test.ts` passes.
-- [x] README and AGENTS counts match `src/triggers/api.ts`.
-
-**Verify:**
-
-- [x] `npm test -- --run test/consistency.test.ts`
-
-**Dependencies:** Task 1.
-
-**Files:**
-
-- `src/index.ts`
-- `README.md`
-- `AGENTS.md`
-
-### Task 10: Final Verification
-
-- [x] Run targeted graph/API tests.
-- [x] Run retrieval and OpenCode tests.
-- [x] Run consistency tests.
+- [x] Run targeted graph/API/Viewer/security tests.
+- [x] Run package build.
 - [x] Run full non-integration test suite.
-- [x] Run build.
+- [x] Document any unrelated full-suite failures.
+- [x] Manual browser smoke no CDN script, progressive loading, responsive interactions, no automatic graph build.
 
 **Acceptance criteria:**
 
-- [x] All targeted tests pass.
-- [ ] `npm test` passes.
-- [x] `npm run build` passes.
+- [x] Targeted tests pass.
+- [x] Build passes.
+- [x] Manual smoke confirms success criteria from `docs/SPEC.md`.
 
 **Verify:**
 
-- [x] `npm test -- --run test/graph.test.ts test/api-session-graph.test.ts`
-- [x] `npm test -- --run test/hybrid-search.test.ts test/opencode-auto-context.test.ts test/consistency.test.ts`
-- [ ] `npm test`
-- [x] `npm run build`
+- [x] `npm test -- --run test/viewer-force-graph-asset.test.ts test/viewer-security.test.ts test/viewer-session-id.test.ts test/viewer-graph-empty.test.ts test/viewer-graph-cooldown.test.ts test/graph.test.ts test/api-session-graph.test.ts` passed with 7 files and 60 tests after review fixes.
+- [x] `npm run build` passed.
+- [x] `npm test` was run; it still fails outside this Graph Viewer work with 12 failed files and 39 failed tests.
 
-**Full test note:** `npm test` was run and failed locally with 12 failed files / 39 failed tests. Failures were outside the targeted graph/session/viewer/search/OpenCode areas and concentrated in environment/platform-sensitive tests: local connect adapter config detection, OPENAI/Ollama environment leakage, Windows path separator expectations, symlink/mock filesystem behavior, and existing auto-compress/slots env gates.
+**Full-suite failure notes:**
 
-**Dependencies:** Tasks 1-9.
+- Existing user config leakage: `C:\Users\Administrator\.qwen\settings.json` and `C:\Users\Administrator\.continue\config.yaml`.
+- Environment-sensitive embedding/provider expectations: `OPENAI_BASE_URL` and related OpenAI/Azure shape tests.
+- Existing auto-compress/slots env gates and hook idempotency assertions.
+- Windows path and symlink/compress-file expectation mismatches.
 
-**Files:** None unless verification reveals issues.
-
-## Human Review Checkpoint
-
-- [ ] Confirm task order.
-- [ ] Confirm `Full` rebuild semantics are acceptable when explicitly selected.
-- [ ] Confirm OpenCode compaction should preserve current summarize call plus session end.
-- [ ] Confirm implementation may proceed.
+**Files:** None unless verification reveals a bug.

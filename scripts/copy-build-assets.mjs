@@ -18,4 +18,8 @@ await Promise.all([
   copyToDist(".env.example"),
   copyToDist(join("src", "viewer", "index.html"), join("viewer", "index.html")),
   copyToDist(join("src", "viewer", "favicon.svg"), join("viewer", "favicon.svg")),
+  copyToDist(
+    join("node_modules", "force-graph", "dist", "force-graph.min.js"),
+    join("viewer", "force-graph.min.js"),
+  ),
 ]);

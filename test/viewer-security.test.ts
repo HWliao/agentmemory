@@ -6,6 +6,7 @@ import {
   buildAllowedHosts,
   isHostAllowed,
   startViewerServer,
+  viewerProxyTimeoutMs,
 } from "../src/viewer/server.js";
 
 describe("viewer document security", () => {
@@ -14,10 +15,16 @@ describe("viewer document security", () => {
     expect(rendered.found).toBe(true);
     if (!rendered.found) return;
 
-    expect(rendered.csp).toContain("script-src 'nonce-");
+    const directives = rendered.csp.split(";").map((d) => d.trim());
+    const scriptSrc = directives.find((d) => d.startsWith("script-src"));
+    expect(scriptSrc).toBeDefined();
+    expect(scriptSrc).toMatch(/'nonce-[^']+'/);
+    expect(scriptSrc).not.toContain("'self'");
     expect(rendered.csp).toContain("script-src-attr 'none'");
     expect(rendered.csp).toContain("img-src 'self'");
     expect(rendered.csp).not.toContain("script-src 'unsafe-inline'");
+    expect(rendered.csp).not.toMatch(/cdn\.jsdelivr|unpkg/i);
+    expect(rendered.html).toMatch(/<script nonce="[^"]+" src="\/force-graph\.min\.js"><\/script>/);
     expect(rendered.html).toContain("<script nonce=\"");
     expect(rendered.html).not.toContain("__AGENTMEMORY_VIEWER_NONCE__");
   });
@@ -128,6 +135,15 @@ describe("viewer host allowlist (DNS rebinding defence)", () => {
   });
 });
 
+describe("viewer REST proxy timeouts", () => {
+  it("keeps normal requests on the short timeout and gives graph rebuilds a long budget", () => {
+    expect(viewerProxyTimeoutMs("/agentmemory/health")).toBe(10000);
+    expect(viewerProxyTimeoutMs("/agentmemory/graph/build")).toBe(300000);
+    expect(viewerProxyTimeoutMs("/agentmemory/session/end")).toBe(300000);
+    expect(viewerProxyTimeoutMs("/agentmemory/replay/import-jsonl")).toBe(300000);
+  });
+});
+
 describe("viewer request handler DNS rebinding defence (e2e)", () => {
   const cleanups: Array<() => Promise<void>> = [];
   afterAll(async () => {
@@ -222,5 +238,15 @@ describe("viewer request handler DNS rebinding defence (e2e)", () => {
     // Sanity-check the artwork: rounded dark tile + green "AM" lettering.
     expect(res.body).toContain('fill="#111111"');
     expect(res.body).toContain(">AM<");
+  });
+
+  it("serves the local force-graph browser bundle as JavaScript", async () => {
+    const { port } = await spinUpViewer();
+    const res = await request(port, `localhost:${port}`, "/force-graph.min.js");
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toBe("application/javascript; charset=utf-8");
+    expect(res.headers["cache-control"]).toBe("public, max-age=3600");
+    expect(res.body).toContain("force-graph");
+    expect(res.body).toContain("ForceGraph");
   });
 });

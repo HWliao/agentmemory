@@ -191,6 +191,72 @@ describe("Graph Functions", () => {
     expect(result.depth).toBe(2);
   });
 
+  it("graph-query pages nodes in existing order and returns continuation metadata", async () => {
+    const nodes: GraphNode[] = Array.from({ length: 5 }, (_, i) => ({
+      id: `gn_${i}`,
+      type: "concept",
+      name: `node-${i}`,
+      properties: {},
+      sourceObservationIds: [`obs_${i}`],
+      createdAt: `2026-02-01T10:00:0${i}Z`,
+    }));
+    for (const node of nodes) await kv.set(KV.graphNodes, node.id, node);
+    const edges: GraphEdge[] = [
+      {
+        id: "ge_0_1",
+        type: "related_to",
+        sourceNodeId: "gn_0",
+        targetNodeId: "gn_1",
+        weight: 0.5,
+        sourceObservationIds: ["obs_0"],
+        createdAt: "2026-02-01T10:00:00Z",
+      },
+      {
+        id: "ge_1_2",
+        type: "related_to",
+        sourceNodeId: "gn_1",
+        targetNodeId: "gn_2",
+        weight: 0.5,
+        sourceObservationIds: ["obs_1"],
+        createdAt: "2026-02-01T10:00:01Z",
+      },
+      {
+        id: "ge_3_4",
+        type: "related_to",
+        sourceNodeId: "gn_3",
+        targetNodeId: "gn_4",
+        weight: 0.5,
+        sourceObservationIds: ["obs_3"],
+        createdAt: "2026-02-01T10:00:03Z",
+      },
+    ];
+    for (const edge of edges) await kv.set(KV.graphEdges, edge.id, edge);
+
+    const result = (await sdk.trigger("mem::graph-query", {
+      offset: 1,
+      limit: 2,
+    })) as GraphQueryResult;
+
+    expect(result.nodes.map((node) => node.id)).toEqual(["gn_1", "gn_2"]);
+    expect(result.edges.map((edge) => edge.id)).toEqual(["ge_0_1", "ge_1_2"]);
+    expect(result.offset).toBe(1);
+    expect(result.limit).toBe(2);
+    expect(result.totalNodes).toBe(5);
+    expect(result.nextOffset).toBe(3);
+    expect(result.hasMore).toBe(true);
+  });
+
+  it("graph-query preserves existing unpaged response shape", async () => {
+    await sdk.trigger("mem::graph-extract", { observations: [testObs] });
+
+    const result = (await sdk.trigger("mem::graph-query", {})) as GraphQueryResult;
+
+    expect(result.nodes).toHaveLength(2);
+    expect(result.edges).toHaveLength(1);
+    expect(result).not.toHaveProperty("nextOffset");
+    expect(result).not.toHaveProperty("hasMore");
+  });
+
   it("graph-stats returns counts by type", async () => {
     await sdk.trigger("mem::graph-extract", { observations: [testObs] });
 

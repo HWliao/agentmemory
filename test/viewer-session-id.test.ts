@@ -269,6 +269,27 @@ describe("viewer session rendering", () => {
     expect(toast).toContain("timed out after 10s");
   });
 
+  it("uses the long timeout budget for graph rebuild requests", async () => {
+    const { sandbox } = loadViewerSandbox();
+    const scheduledTimeouts: number[] = [];
+    sandbox.AbortController = function AbortController() {
+      this.signal = { aborted: false };
+      this.abort = () => {
+        this.signal.aborted = true;
+      };
+    };
+    sandbox.setTimeout = (_fn: () => void, ms?: number) => {
+      scheduledTimeouts.push(ms ?? 0);
+      return 1;
+    };
+    sandbox.fetch = async () => ({ ok: true, json: async () => ({ success: true }) });
+
+    await sandbox.apiPost("graph/build", {});
+
+    expect(scheduledTimeouts).toContain(300000);
+    expect(scheduledTimeouts).not.toContain(10000);
+  });
+
   it("does not throw when timeline and sessions tabs receive sessions missing ids", () => {
     const { sandbox, getElement } = loadViewerSandbox();
     const sessions = [{ status: "active", observationCount: 1, startedAt: "2026-05-13T12:00:00Z" }];

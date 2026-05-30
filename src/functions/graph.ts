@@ -132,6 +132,48 @@ function chunkObservations(
   return chunks;
 }
 
+function pageGraphResult(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  depth: number,
+  offset?: number,
+  limit?: number,
+): GraphQueryResult {
+  if (offset === undefined && limit === undefined) {
+    return { nodes, edges, depth };
+  }
+
+  const safeOffset =
+    typeof offset === "number" && Number.isInteger(offset) && offset >= 0
+      ? offset
+      : 0;
+  const remaining = Math.max(0, nodes.length - safeOffset);
+  const safeLimit =
+    typeof limit === "number" && Number.isInteger(limit) && limit > 0
+      ? limit
+      : remaining;
+  const pagedNodes = nodes.slice(safeOffset, safeOffset + safeLimit);
+  const pagedNodeIds = new Set(pagedNodes.map((node) => node.id));
+  const pagedEdges = edges.filter(
+    (edge) =>
+      pagedNodeIds.has(edge.sourceNodeId) ||
+      pagedNodeIds.has(edge.targetNodeId),
+  );
+  const nextOffset = safeOffset + pagedNodes.length;
+  const hasMore = nextOffset < nodes.length;
+  const result: GraphQueryResult = {
+    nodes: pagedNodes,
+    edges: pagedEdges,
+    depth,
+    offset: safeOffset,
+    limit: safeLimit,
+    totalNodes: nodes.length,
+    hasMore,
+  };
+  if (hasMore) result.nextOffset = nextOffset;
+  return result;
+}
+
 export function registerGraphFunction(
   sdk: ISdk,
   kv: StateKV,
@@ -312,6 +354,8 @@ export function registerGraphFunction(
       nodeType?: string;
       maxDepth?: number;
       query?: string;
+      offset?: number;
+      limit?: number;
     }): Promise<GraphQueryResult> => {
       const allNodes = (await kv.list<GraphNode>(KV.graphNodes)).filter((n) => !n.stale);
       const allEdges = (await kv.list<GraphEdge>(KV.graphEdges)).filter((e) => !e.stale);
@@ -330,7 +374,13 @@ export function registerGraphFunction(
         const relatedEdges = allEdges.filter(
           (e) => nodeIds.has(e.sourceNodeId) || nodeIds.has(e.targetNodeId),
         );
-        return { nodes: matchingNodes, edges: relatedEdges, depth: 0 };
+        return pageGraphResult(
+          matchingNodes,
+          relatedEdges,
+          0,
+          data.offset,
+          data.limit,
+        );
       }
 
       if (data.startNodeId) {
@@ -372,14 +422,20 @@ export function registerGraphFunction(
           }
         }
 
-        return { nodes: resultNodes, edges: resultEdges, depth: maxDepth };
+        return pageGraphResult(
+          resultNodes,
+          resultEdges,
+          maxDepth,
+          data.offset,
+          data.limit,
+        );
       }
 
       let filtered = allNodes;
       if (data.nodeType) {
         filtered = allNodes.filter((n) => n.type === data.nodeType);
       }
-      return { nodes: filtered, edges: allEdges, depth: 0 };
+      return pageGraphResult(filtered, allEdges, 0, data.offset, data.limit);
     },
   );
 

@@ -438,6 +438,11 @@ export interface GraphQueryResult {
   nodes: GraphNode[];
   edges: GraphEdge[];
   depth: number;
+  offset?: number;
+  limit?: number;
+  totalNodes?: number;
+  nextOffset?: number;
+  hasMore?: boolean;
 }
 
 export type ConsolidationTier =

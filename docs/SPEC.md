@@ -1,33 +1,32 @@
-# Spec: Graph Extraction and Viewer Rebuild Reliability
+# Spec: Graph Viewer Performance and Incremental Loading
 
 ## Objective
 
-Fix the knowledge graph lifecycle so Viewer users and agent integration users get predictable graph behavior without hidden expensive work.
+Optimize the Viewer Graph tab for users with large knowledge graphs. The current graph viewer can become sluggish during initial load and ordinary interactions such as dragging, panning, zooming, hovering, searching, and node expansion.
 
 Target users:
 
-- Viewer users opening the Graph tab to inspect graph nodes and edges.
-- Agent integration users using Claude Code, OpenCode, Codex, Qwen, or other hook-based integrations that rely on session lifecycle events.
+- Viewer users opening the Graph tab to inspect large graph stores.
+- Local agentmemory users who need the graph to remain usable as stored graph nodes and edges grow.
 
-Core behavior:
+Primary objective:
 
-- The Graph page must not call a missing endpoint or silently fail with a 404.
-- When graph data is empty and graph extraction is enabled, the Viewer asks before building graph data.
-- When graph extraction is not enabled, graph endpoints return empty/skipped results and never call the LLM provider.
-- `POST /agentmemory/session/end` must drive the existing `event::session::stopped` path so session summary, slot reflection, and graph extraction remain centralized.
-- OpenCode should close graph-relevant session boundaries by ending the previous active session when a new session starts and ending the current session when compaction completes.
-- Memory retrieval must be verified to use graph information when graph nodes and edges exist.
+- Make the Graph tab progressively load graph data instead of blocking on one full payload/render pass.
+- Make dragging, panning, and zooming responsive by avoiding whole-graph simulation and repeated full scans during pointer movement.
+- Replace the current hand-written Canvas graph renderer with a local `force-graph` integration.
 
-Acceptance criteria:
+Core acceptance criteria:
 
-- Opening the Graph tab with no graph data no longer automatically starts graph build unless the user confirms and graph extraction is enabled.
-- Clicking `Rebuild Graph` opens a second confirmation dialog before any build/rebuild request is sent.
-- The `Rebuild Graph` confirmation offers `Incremental` and `Full` options, defaults to `Incremental`, and warns that graph extraction can be expensive because it may invoke the configured LLM provider across many observations.
-- `/agentmemory/graph/build` exists and returns a well-formed response instead of 404.
-- If graph extraction is disabled, `/agentmemory/graph/query`, `/agentmemory/graph/stats`, `/agentmemory/graph/extract`, and `/agentmemory/graph/build` return empty/skipped graph responses without provider calls.
-- `session/end -> event::session::stopped -> mem::graph-extract` is covered by a regression test.
-- OpenCode `session.compacted` triggers `/session/end`; `session.created` ends the previous active session before starting the new one when the IDs differ.
-- A unit test proves graph data contributes to retrieval scoring/results.
+- Initial Graph tab progressively loads graph data in configurable batches instead of rendering all nodes at once.
+- The right sidebar exposes loading configuration; default loading cadence is 100 nodes every 100ms.
+- Graph data ordering stays consistent with the current backend order; this work should not introduce a new ranking/sorting policy.
+- Node expansion and search remain responsive while graph data is still progressively loading.
+- Drag, pan, and zoom do not restart full `O(N^2)` physics work by default.
+- Graph rendering uses cached indexes for node lookup, adjacency, neighbor checks, degree counts, and normalized labels.
+- `force-graph` is loaded locally or bundled; the Viewer must not load graph scripts from a CDN.
+- Overall Viewer layout and color styling stays unchanged. Only graph node type colors may be adjusted.
+- Graph node type colors should move to macaron-style web-safe pastel colors that stay close to the existing type color families.
+- Disabled graph behavior and manual graph build behavior remain unchanged.
 
 ## Tech Stack
 
@@ -35,122 +34,213 @@ Acceptance criteria:
 - Backend integration: iii-sdk Worker/Function/Trigger only.
 - State: iii-engine StateModule through `StateKV`; no direct SQLite access.
 - Viewer: static HTML/CSS/JavaScript in `src/viewer/index.html`.
+- Renderer: `force-graph`, integrated locally or bundled into Viewer assets, not loaded from CDN.
 - Tests: Vitest.
+
+Reference material:
+
+- Existing Viewer Graph implementation: `src/viewer/index.html`.
+- Existing graph backend: `src/functions/graph.ts` and `src/triggers/api.ts`.
+- Local `force-graph` sample: `C:\Users\Administrator\Downloads\preview (1).html`.
+
+The local sample is a reference only. Useful ideas include `ForceGraph()(container).graphData(data)`, `cooldownTicks`, `d3AlphaDecay`, `d3VelocityDecay`, `d3Force("charge")`, `d3Force("link")`, `zoomToFit`, pause/resume, hover/click callbacks, and custom node drawing. Do not copy demo-only auto node growth or CDN loading.
 
 ## Commands
 
-- Run targeted tests: `npm test -- --run test/graph.test.ts test/api-session-graph.test.ts`
-- Run retrieval tests after adding graph retrieval coverage: `npm test -- --run test/smart-search.test.ts test/graph.test.ts`
-- Run consistency checks after endpoint changes: `npm test -- --run test/consistency.test.ts`
-- Run full non-integration suite: `npm test`
+- Run graph backend tests: `npm test -- --run test/graph.test.ts`
+- Run graph API tests: `npm test -- --run test/api-session-graph.test.ts`
+- Run Viewer graph tests: `npm test -- --run test/viewer-graph-empty.test.ts test/viewer-graph-cooldown.test.ts`
+- Run consistency tests if endpoint counts or API registrations change: `npm test -- --run test/consistency.test.ts`
+- Run focused graph validation: `npm test -- --run test/graph.test.ts test/api-session-graph.test.ts test/viewer-graph-empty.test.ts test/viewer-graph-cooldown.test.ts`
+- Run full non-integration suite before final completion: `npm test`
 - Build package: `npm run build`
 
 ## Project Structure
 
-- `src/functions/graph.ts` -> graph extraction, query, stats, and build/backfill functions.
-- `src/triggers/api.ts` -> REST endpoint registration and request validation.
-- `src/triggers/events.ts` -> session stopped subscriber and graph extraction trigger.
-- `src/viewer/index.html` -> Graph tab empty state, rebuild confirmation, and graph API calls.
-- `plugin/opencode/agentmemory-capture.ts` -> OpenCode session lifecycle mapping.
-- `test/graph.test.ts` -> graph function behavior and build/backfill tests.
-- `test/api-session-graph.test.ts` -> API regression tests for session end and graph build route.
-- `test/smart-search.test.ts` or focused equivalent -> graph participation in retrieval.
-- `README.md`, `AGENTS.md`, `src/index.ts` -> endpoint count updates if a REST endpoint is added.
+- `src/functions/graph.ts` -> existing graph query, graph stats, and graph build functions. Touch only if progressive loading requires backend query compatibility changes.
+- `src/triggers/api.ts` -> REST endpoint registration and request validation/whitelisting. Touch only if graph query request fields change.
+- `src/viewer/index.html` -> Graph tab UI, loading configuration controls, renderer setup, graph data loading, graph interaction handling, graph node type colors, and Viewer-side caches.
+- `src/auth.ts` -> Viewer CSP. Update only if local renderer asset loading requires it.
+- `test/graph.test.ts` -> backend graph query behavior and compatibility tests if graph query payload shape changes.
+- `test/api-session-graph.test.ts` -> graph REST boundary behavior, whitelisting, disabled graph behavior.
+- `test/viewer-graph-empty.test.ts` -> Graph tab loading, empty/disabled state, and no automatic build source-level assertions.
+- `test/viewer-graph-cooldown.test.ts` or a new focused Viewer test -> source-level assertions for progressive loading, force-graph integration, interaction hot paths, and animation lifecycle.
+- `docs/SPEC.md` -> active spec for this Viewer graph optimization.
+- `docs/archive/` -> completed historical specs and task lists.
 
 ## Code Style
 
-Use minimal TypeScript changes, explicit input whitelisting at REST boundaries, and keep graph lifecycle behavior centralized in existing graph/session functions.
+Use minimal TypeScript and static Viewer changes. Keep validation at system boundaries and keep graph data access through existing iii-sdk/StateKV paths.
 
-Example style:
+StateKV currently exposes `list(scope)` as a full-array read. Do not make the Viewer request many `graph/query` offset/limit pages unless storage-level pagination is added; load one graph snapshot and apply progressive rendering on the client.
+
+REST handlers must whitelist fields before calling `sdk.trigger()` if graph query inputs change:
 
 ```ts
-sdk.registerFunction("api::graph-build", async (req: ApiRequest): Promise<Response> => {
+sdk.registerFunction("api::graph-query", async (req: ApiRequest): Promise<Response> => {
   const authErr = checkAuth(req, secret);
   if (authErr) return authErr;
+  if (!isGraphExtractionEnabled()) return graphDisabledResponse("query");
 
   const body = (req.body ?? {}) as Record<string, unknown>;
-  const payload = {
-    batchSize: parseOptionalPositiveInt(body.batchSize) ?? undefined,
-    reset: body.reset === true,
-  };
+  const payload: Record<string, unknown> = {};
+  if (typeof body.startNodeId === "string") payload.startNodeId = body.startNodeId;
+  if (typeof body.query === "string") payload.query = body.query;
+  const maxDepth = parseOptionalPositiveInt(body.maxDepth);
+  if (maxDepth === null) {
+    return { status_code: 400, body: { error: "maxDepth must be a positive integer" } };
+  }
+  if (maxDepth !== undefined) payload.maxDepth = maxDepth;
 
   const result = await sdk.trigger({
-    function_id: "mem::graph-build",
+    function_id: "mem::graph-query",
     payload,
   });
   return { status_code: 200, body: result };
 });
 ```
 
+Viewer loading controls should use explicit numeric defaults and clamp user input:
+
+```js
+var DEFAULT_GRAPH_LOAD_BATCH_SIZE = 100;
+var DEFAULT_GRAPH_LOAD_INTERVAL_MS = 100;
+
+function getGraphLoadConfig() {
+  return {
+    batchSize: clampPositiveInt(state.graph.loadBatchSize, DEFAULT_GRAPH_LOAD_BATCH_SIZE),
+    intervalMs: clampPositiveInt(state.graph.loadIntervalMs, DEFAULT_GRAPH_LOAD_INTERVAL_MS)
+  };
+}
+```
+
+Viewer hot paths should use cached indexes instead of repeated scans:
+
+```js
+function rebuildGraphIndexes() {
+  state.graph.nodeById = new Map();
+  state.graph.edgesByNode = new Map();
+  state.graph.neighborsByNode = new Map();
+  state.graph.degreeByNode = new Map();
+
+  state.graph.nodes.forEach(function(node) {
+    state.graph.nodeById.set(node.id, node);
+  });
+
+  state.graph.edges.forEach(function(edge) {
+    addEdgeIndex(edge.sourceNodeId, edge);
+    addEdgeIndex(edge.targetNodeId, edge);
+    addNeighborIndex(edge.sourceNodeId, edge.targetNodeId);
+    addNeighborIndex(edge.targetNodeId, edge.sourceNodeId);
+  });
+}
+```
+
 Conventions:
 
-- Do not pass raw REST request bodies to `sdk.trigger()`.
-- Capture timestamps once per operation and reuse them.
-- Keep graph extraction gated by `GRAPH_EXTRACTION_ENABLED === "true"`.
-- Prefer existing helpers such as `parseOptionalPositiveInt`, `checkAuth`, `graphDisabledResponse` or equivalent empty/skipped responses.
-- Avoid new abstractions unless multiple call sites need them.
+- Prefer progressive rendering/loading over one blocking full render pass.
+- Keep response shapes backward-compatible unless explicitly approved.
+- Do not introduce broad abstractions unless multiple call sites need them.
+- Keep Viewer code readable despite being static JavaScript; use small helper functions for cache rebuild, merge, and lifecycle cleanup.
+- Do not change the Viewer page layout, sidebar structure, typography, or global color system as part of this work.
+- Limit visual styling changes to graph node colors. Use macaron-style web-safe pastel colors that preserve the existing node type color families.
+- Avoid comments that restate code; comments should explain non-obvious performance or CSP decisions.
 
 ## Testing Strategy
 
 Test levels:
 
-- Unit tests for `mem::graph-build`, `mem::graph-query`, `mem::graph-stats`, and disabled extraction behavior.
-- API handler tests for `/session/end` triggering `event::session::stopped` and `/graph/build` forwarding only whitelisted fields.
-- Viewer behavior can be covered by static unit-style assertions only if an existing pattern exists; otherwise verify through focused source-level tests and manual browser smoke after implementation.
-- OpenCode lifecycle tests should verify emitted REST calls for `session.compacted` and new-session handoff if a plugin test harness exists; otherwise add the smallest test seam needed.
-- Retrieval tests must prove graph results are incorporated, preferably by asserting `graphScore > 0` or graph-influenced ranking in `HybridSearch`/`memory_smart_search` behavior.
+- Backend unit tests for graph query compatibility if graph loading requires API contract changes.
+- API handler tests for request whitelisting, disabled graph behavior, and response compatibility if REST inputs change.
+- Viewer source-level tests for progressive loading defaults, right-sidebar loading configuration controls, direct local `force-graph` integration, no automatic graph build, no CDN renderer script, and known hot-path regressions.
+- Viewer source-level or snapshot-style checks should guard against accidental global layout/style rewrites where practical.
+- Manual browser smoke for real interaction behavior: initial load, drag, pan, zoom, hover, search, expand, pause/resume, switch tabs, rebuild/reload.
+- Build verification after dependency or Viewer asset changes.
 
-Regression tests are added per implementation slice so each task starts from a focused red state.
+Regression targets:
+
+- `loadGraph()` must not block first interaction on rendering every graph node in a single pass.
+- The default progressive loading cadence is 100 nodes every 100ms.
+- The right sidebar exposes loading configuration for node batch size and interval.
+- The progressive loading sequence preserves current graph data ordering.
+- Loading configuration resets to defaults on each Viewer page load.
+- Progressive loading continues while the user is dragging or panning.
+- Opening Graph tab must not call `graph/build` automatically.
+- Pointer movement and dragging must not wake global full-graph simulation by default.
+- Tooltip connection counts and focus fading must use cached adjacency data rather than full edge scans on every frame or mouse move.
+- Viewer must not load `force-graph` or any graph renderer from a CDN.
 
 Verification order:
 
-1. Run targeted failing tests before implementation to confirm red state.
-2. Implement minimal graph build and session lifecycle fixes.
-3. Run targeted graph/API tests until green.
-4. Add retrieval/OpenCode tests and run them until green.
-5. Run consistency tests after endpoint count updates.
-6. Run `npm test` and `npm run build` before declaring done.
+1. Add Viewer source tests for progressive loading defaults, loading controls, local `force-graph`, and no CDN script.
+2. Add backend/API tests only if the graph query contract changes.
+3. Replace the current Canvas graph renderer with local `force-graph`.
+4. Add progressive graph data loading using current ordering and default 100 nodes per 100ms.
+5. Add Viewer cache/merge behavior and interaction hot-path tests.
+6. Run targeted tests after each slice.
+7. Run `npm run build` and `npm test` before final completion.
 
 ## Boundaries
 
 Always:
 
-- Use iii-sdk functions/triggers and `StateKV`; never bypass iii-engine state.
-- Validate `GRAPH_EXTRACTION_ENABLED` before any graph extract/build provider call.
-- Return empty/skipped graph responses when graph extraction is disabled.
-- Require user confirmation before Viewer rebuild starts, with `Incremental` selected by default and `Full` available as an explicit option.
-- Warn in the Viewer confirmation that graph build/rebuild can be expensive and slow because it may call the configured LLM provider for many stored observations.
-- Keep changes focused on graph/session/OpenCode/viewer behavior and tests.
-- Update endpoint counts in `src/index.ts`, `README.md`, and `AGENTS.md` if adding `/agentmemory/graph/build`.
+- Keep graph state access through iii-sdk functions/triggers and `StateKV`; never read SQLite directly.
+- Preserve `GRAPH_EXTRACTION_ENABLED=false` disabled behavior for graph endpoints.
+- Preserve the rule that opening Graph tab never automatically triggers `graph/build`.
+- Keep Viewer graph rendering/loading progressive by default.
+- Preserve the current graph data order; do not introduce a new default ranking policy.
+- Expose right-sidebar loading configuration with a default of 100 nodes every 100ms.
+- Reset loading configuration to defaults on each Viewer page load; do not persist it across Viewer sessions.
+- Continue progressive loading while the user is actively dragging or panning.
+- Preserve the current overall Viewer layout, sidebar structure, typography, and global color styling.
+- Keep graph node color changes limited to node type colors, using nearby macaron-style web-safe pastel colors.
+- Validate and whitelist REST request fields before `sdk.trigger()`.
+- Keep `force-graph` local or bundled if used; no CDN graph scripts.
+- Keep existing graph reliability tests passing.
 
 Ask first:
 
-- Adding dependencies.
-- Changing persisted data schema or adding new KV scopes.
-- Making graph extraction run automatically on OpenCode idle/status events beyond `session.compacted` and new-session handoff.
-- Changing the public shape of existing `graph/query`, `graph/stats`, or `graph/extract` responses.
-- Making `Full` graph rebuild destructive beyond the confirmed user-selected operation.
+- Changing persisted `GraphNode` or `GraphEdge` schema.
+- Adding any dependency other than `force-graph` for the renderer.
+- Changing Viewer CSP beyond what is needed for local/self-hosted renderer assets.
+- Changing public graph response shapes in a non-backward-compatible way.
+- Changing the default graph data ordering/ranking policy.
+- Changing the overall Viewer layout or global color system.
 
 Never:
 
-- Call the LLM provider when graph extraction is disabled.
-- Automatically start graph build just because the user opened the Graph tab.
-- Default rebuild to full/destructive mode.
-- Access SQLite files directly or parse `state_store.db` outside iii-engine.
-- Remove or skip failing tests to make the suite pass.
-- Revert unrelated user or agent changes in the worktree.
+- Reintroduce automatic graph build on Graph tab open.
+- Use CDN scripts in the Viewer for graph rendering.
+- Require all graph nodes to be rendered in one blocking pass before interaction.
+- Persist loading configuration across Viewer sessions without explicit approval.
+- Bypass iii-engine state with standalone SQLite access.
+- Remove or weaken disabled graph behavior.
+- Remove failing tests to make the suite pass.
+
+## Success Criteria
+
+- Graph tab progressively loads graph nodes with default cadence 100 nodes per 100ms and remains usable on large graph stores.
+- Right sidebar lets users adjust loading configuration.
+- Loading configuration resets on every Viewer page load.
+- Progressive loading continues during drag/pan interactions.
+- Dragging, panning, and zooming are responsive because pointer movement avoids full graph simulation and full graph scans.
+- Node expansion and search remain responsive while progressive loading is active.
+- `force-graph` replaces the current Canvas renderer and is integrated locally.
+- Overall Viewer layout and global styling remain unchanged; only graph node type colors are updated to nearby macaron-style web-safe pastel colors.
+- Viewer CSP remains strict and does not permit third-party CDN graph scripts.
+- Targeted graph/API/Viewer tests pass.
+- `npm run build` passes.
 
 ## Decisions
 
-- Manual `Rebuild Graph` uses a confirmation dialog with two options: `Incremental` and `Full`. `Incremental` is the default. `Full` is explicit and must be user-selected in the dialog.
-- The confirmation dialog must warn that graph extraction can be expensive and slow because it may call the configured LLM provider over many stored observations.
-- Disabled graph behavior applies to all graph REST endpoints: `/agentmemory/graph/query`, `/agentmemory/graph/stats`, `/agentmemory/graph/extract`, and `/agentmemory/graph/build`.
-- Disabled graph REST endpoints should return HTTP 200 with empty/skipped bodies and must not call the LLM provider.
-- Disabled graph response bodies are fixed as:
-  - `POST /agentmemory/graph/query`: `{ nodes: [], edges: [], depth: 0, skipped: true, reason: "graph_extraction_disabled" }`
-  - `GET /agentmemory/graph/stats`: `{ totalNodes: 0, totalEdges: 0, nodesByType: {}, edgesByType: {}, skipped: true, reason: "graph_extraction_disabled" }`
-  - `POST /agentmemory/graph/extract`: `{ success: false, skipped: true, reason: "graph_extraction_disabled", nodesAdded: 0, edgesAdded: 0 }`
-  - `POST /agentmemory/graph/build`: `{ success: false, skipped: true, reason: "graph_extraction_disabled", observationsProcessed: 0, nodesAdded: 0, edgesAdded: 0 }`
+- Keep graph data ordering consistent with the current behavior; do not add a new default sort or ranking policy in this optimization.
+- Do not use an initial node cap. Instead, progressively load/render graph nodes.
+- Add loading configuration in the right sidebar.
+- Default progressive loading cadence is 100 nodes every 100ms.
+- Loading configuration resets to defaults on each Viewer page load and is not persisted across Viewer sessions.
+- Progressive loading continues while users drag or pan the graph.
+- Replace the existing Canvas renderer directly with local `force-graph`.
+- Do not change the overall Viewer layout or global color styling. Adjust only graph node type colors to nearby macaron-style web-safe pastel colors because the current node colors are visually poor.
 
 ## Open Questions
 
