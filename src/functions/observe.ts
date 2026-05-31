@@ -171,6 +171,7 @@ export function registerObserveFunction(
           await kv.set(KV.observations(payload.sessionId), obsId, raw);
 
         } catch (error) {
+          logger.error("observe: failed to save observation", { obsId, sessionId: payload.sessionId, error: error instanceof Error ? error.message : String(error) });
           if (raw.imageData) {
             const { deleteImage } = await import("../utils/image-store.js");
             const { deletedBytes } = await deleteImage(raw.imageData);

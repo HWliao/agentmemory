@@ -901,3 +901,13 @@ export interface StateScope {
 }
 
 export type StateScopeKey = keyof StateScope;
+
+export type LogLevel = "debug" | "info" | "warn" | "error";
+
+export interface LogConfig {
+  enabled: boolean;
+  dir: string;
+  level: LogLevel;
+  maxSizeBytes: number;
+  maxAgeDays: number;
+}

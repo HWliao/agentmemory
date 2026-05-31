@@ -155,7 +155,9 @@ async function deriveCrystalAndLessons(
         await kv.set(KV.lessons, lessonId, lesson);
       }
       lessonIds.push(lessonId);
-    } catch {}
+    } catch (err) {
+      logger.error("replay: failed to save lesson", { lessonId, error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
   // Content-addressed on sessionId so re-importing the same session
@@ -184,7 +186,9 @@ async function deriveCrystalAndLessons(
       createdAt: existingCrystal?.createdAt ?? createdAt,
     };
     await kv.set(KV.crystals, crystalId, crystal);
-  } catch {}
+  } catch (err) {
+    logger.error("replay: failed to save crystal", { crystalId, error: err instanceof Error ? err.message : String(err) });
+  }
 }
 
 function isRawShape(o: unknown): o is RawObservation {

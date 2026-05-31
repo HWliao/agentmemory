@@ -8,6 +8,7 @@ import type {
   FallbackConfig,
   ClaudeBridgeConfig,
   TeamConfig,
+  LogConfig,
 } from "./types.js";
 
 function safeParseInt(value: string | undefined, fallback: number): number {
@@ -404,4 +405,17 @@ export function loadFallbackConfig(): FallbackConfig {
       return true;
     });
   return { providers };
+}
+
+export function loadLogConfig(): LogConfig {
+  const env = getMergedEnv();
+  const level = env["AGENTMEMORY_LOG_LEVEL"] || "info";
+  const validLevels = new Set(["debug", "info", "warn", "error"]);
+  return {
+    enabled: env["AGENTMEMORY_LOG_FILE"] !== "false",
+    dir: env["AGENTMEMORY_LOG_DIR"] || join(DATA_DIR, "logs"),
+    level: (validLevels.has(level) ? level : "info") as LogConfig["level"],
+    maxSizeBytes: safeParseInt(env["AGENTMEMORY_LOG_MAX_SIZE"], 10 * 1024 * 1024),
+    maxAgeDays: safeParseInt(env["AGENTMEMORY_LOG_MAX_AGE"], 30),
+  };
 }

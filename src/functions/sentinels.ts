@@ -4,6 +4,7 @@ import { KV, generateId } from "../state/schema.js";
 import { withKeyedLock } from "../state/keyed-mutex.js";
 import type { Action, ActionEdge, Checkpoint, CompressedObservation, FunctionMetrics, Sentinel, Session } from "../types.js";
 import { recordAudit } from "./audit.js";
+import { logger } from "../logger.js";
 
 const VALID_TYPES: Sentinel["type"][] = [
   "webhook",
@@ -151,7 +152,7 @@ export function registerSentinelsFunction(sdk: ISdk, kv: StateKV): void {
               await unblockLinkedActions(kv, fresh);
             });
           } catch (err) {
-            console.error("sentinel timer callback failed", sentinel.id, err);
+            logger.error("sentinels: timer callback failed", { sentinelId: sentinel.id, error: err instanceof Error ? err.message : String(err) });
           }
         }, durationMs);
       }

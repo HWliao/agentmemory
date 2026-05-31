@@ -7,6 +7,7 @@ import {
   loadClaudeBridgeConfig,
   loadTeamConfig,
   loadSnapshotConfig,
+  loadLogConfig,
   isGraphExtractionEnabled,
   isAutoCompressEnabled,
   isConsolidationEnabled,
@@ -97,7 +98,7 @@ import { DedupMap } from "./functions/dedup.js";
 import { registerHealthMonitor } from "./health/monitor.js";
 import { initMetrics, OTEL_CONFIG } from "./telemetry/setup.js";
 import { VERSION } from "./version.js";
-import { bootLog } from "./logger.js";
+import { bootLog, initFileLogging } from "./logger.js";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
@@ -160,6 +161,7 @@ async function main() {
   const config = loadConfig();
   const embeddingConfig = loadEmbeddingConfig();
   const fallbackConfig = loadFallbackConfig();
+  initFileLogging(loadLogConfig());
 
   const provider =
     fallbackConfig.providers.length > 0

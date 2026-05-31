@@ -1,28 +1,6 @@
-// Thin logging shim for agentmemory.
-//
-// iii-sdk v0.11 dropped `getContext()`, which had been the source of a
-// contextual logger in every function handler (`getContext().logger`).
-// Migrating directly to the v0.11 OTEL-based `getLogger()` would force
-// every call site to care about the OTEL Logger API shape (`emit(...)`
-// with severity numbers and attributes maps). Instead, this module
-// exposes a single `logger` singleton with the same `.info/.warn/.error`
-// signature the old code used, so the mechanical replacement across
-// 30+ function files is: drop the `getContext` import, drop the
-// `const ctx = getContext();` line, and rename `ctx.logger.*` to
-// `logger.*`. Nothing else changes.
-//
-// Output goes to stderr as `[agentmemory] <level> <msg> <json-fields>`.
-// The iii-engine's `iii-exec` worker runs the agentmemory binary as a
-// child process and forwards stderr into `docker logs
-// agentmemory-iii-engine-1`, so these lines end up next to the engine's
-// own output without needing any OTEL wiring. If we later want
-// structured OTEL logs, this file is the only thing that changes.
-//
-// See rohitg00/agentmemory#143 follow-up — the #116 migration updated
-// test mocks but left the real `getContext()` imports in place, which
-// passed `npm test` (tests mock iii-sdk) and `npm run build` (tsdown
-// doesn't type-check) but crashed `node dist/index.mjs` on first
-// import.
+import { existsSync, mkdirSync, appendFileSync, renameSync, readdirSync, statSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
+import type { LogConfig, LogLevel } from "./types.js";
 
 type Fields = Record<string, unknown> | undefined;
 
@@ -33,9 +11,86 @@ function fmt(level: string, msg: string, fields: Fields): string {
   try {
     return `[agentmemory] ${level} ${msg} ${JSON.stringify(fields)}`;
   } catch {
-    // Fields contained a circular reference or a BigInt — fall back
-    // to the plain message so a log line never throws.
     return `[agentmemory] ${level} ${msg}`;
+  }
+}
+
+const LEVELS: Record<LogLevel, number> = {
+  debug: 0,
+  info: 1,
+  warn: 2,
+  error: 3,
+};
+
+let logConfig: LogConfig | null = null;
+
+function todayStr(): string {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function logFilePath(): string {
+  return join(logConfig!.dir, `agentmemory-${todayStr()}.log`);
+}
+
+function cleanupOldLogs(dir: string, maxAgeDays: number): void {
+  try {
+    if (!existsSync(dir)) return;
+    const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+    const files = readdirSync(dir);
+    for (const f of files) {
+      if (!f.endsWith(".log")) continue;
+      try {
+        const stats = statSync(join(dir, f));
+        if (stats.mtimeMs < cutoff) {
+          unlinkSync(join(dir, f));
+        }
+      } catch {
+      }
+    }
+  } catch {
+  }
+}
+
+export function initFileLogging(config: LogConfig): void {
+  logConfig = config;
+  if (!config.enabled) return;
+  try {
+    mkdirSync(config.dir, { recursive: true });
+    cleanupOldLogs(config.dir, config.maxAgeDays);
+  } catch {
+  }
+}
+
+function fileLog(level: string, msg: string, fields: Fields): void {
+  if (!logConfig || !logConfig.enabled) return;
+  if (LEVELS[level as LogLevel] < LEVELS[logConfig.level]) return;
+  try {
+    const dir = logConfig.dir;
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+    const path = logFilePath();
+    if (existsSync(path)) {
+      const stats = statSync(path);
+      if (stats.size >= logConfig.maxSizeBytes) {
+        let seq = 1;
+        let backup = `${path}.${seq}`;
+        while (existsSync(backup)) {
+          seq++;
+          backup = `${path}.${seq}`;
+        }
+        try {
+          renameSync(path, backup);
+        } catch {
+        }
+      }
+    }
+    appendFileSync(path, fmt(level, msg, fields) + "\n");
+  } catch {
   }
 }
 
@@ -43,9 +98,8 @@ function emit(level: string, msg: string, fields: Fields): void {
   try {
     process.stderr.write(fmt(level, msg, fields) + "\n");
   } catch {
-    // stderr is unavailable in some weird test/worker contexts — swallow
-    // so no log line can ever crash a handler.
   }
+  fileLog(level, msg, fields);
 }
 
 export const logger = {
@@ -59,17 +113,6 @@ export const logger = {
     emit("error", msg, fields);
   },
 };
-
-// ---------- boot log ----------
-//
-// `bootLog` is for the one-shot status lines that every register-*
-// function used to dump via `console.log` during engine startup. On a
-// fresh install that's ~25 lines of `[agentmemory] X enabled` noise
-// before the user can see a prompt. In quiet mode (default), each
-// line is captured into a buffer and discarded; the CLI surfaces a
-// single compressed summary instead. In verbose mode (set by
-// `--verbose` or `AGENTMEMORY_VERBOSE=1`) the lines pass straight
-// through to stderr exactly like the old console.log calls.
 
 let bootVerbose =
   process.env["AGENTMEMORY_VERBOSE"] === "1" ||
@@ -86,11 +129,11 @@ export function isBootVerbose(): boolean {
 }
 
 export function bootLog(msg: string): void {
+  fileLog("info", msg, undefined);
   if (bootVerbose) {
     try {
       process.stderr.write(`[agentmemory] ${msg}\n`);
     } catch {
-      // stderr unavailable — drop.
     }
     return;
   }
@@ -98,8 +141,7 @@ export function bootLog(msg: string): void {
 }
 
 export function bootWarn(msg: string): void {
-  // Warnings always surface; they're rare and the user needs to see
-  // them even when the rest of the boot log is suppressed.
+  fileLog("warn", msg, undefined);
   try {
     process.stderr.write(`[agentmemory] warn ${msg}\n`);
   } catch {}
