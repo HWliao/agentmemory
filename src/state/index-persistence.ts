@@ -37,6 +37,8 @@ export class IndexPersistence {
       await this.kv.set(KV.bm25Index, "data", this.bm25.serialize());
       if (this.vector && this.vector.size > 0) {
         await this.kv.set(KV.bm25Index, "vectors", this.vector.serialize());
+      } else if (this.vector) {
+        await this.kv.delete(KV.bm25Index, "vectors").catch(() => {});
       }
     } catch (err) {
       this.logFailure(err);

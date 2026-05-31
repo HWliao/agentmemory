@@ -83,6 +83,39 @@ describe("IndexPersistence", () => {
     expect(loaded.vector!.size).toBe(1);
   });
 
+  it("save() with empty vector index clears persisted vectors from KV", async () => {
+    const deleteSpy = vi.fn(async (_scope: string, _key: string) => {});
+    const kvWithSpy = {
+      ...kv,
+      delete: deleteSpy,
+    };
+
+    const bm25 = new SearchIndex();
+    const vector = new VectorIndex();
+
+    const persistence = new IndexPersistence(kvWithSpy as never, bm25, vector);
+    await persistence.save();
+
+    expect(deleteSpy).toHaveBeenCalledWith("mem:index:bm25", "vectors");
+  });
+
+  it("save() with data in vector index does not call kv.delete", async () => {
+    const deleteSpy = vi.fn(async (_scope: string, _key: string) => {});
+    const kvWithSpy = {
+      ...kv,
+      delete: deleteSpy,
+    };
+
+    const bm25 = new SearchIndex();
+    const vector = new VectorIndex();
+    vector.add("obs_1", "ses_1", new Float32Array([0.1, 0.2, 0.3]));
+
+    const persistence = new IndexPersistence(kvWithSpy as never, bm25, vector);
+    await persistence.save();
+
+    expect(deleteSpy).not.toHaveBeenCalled();
+  });
+
   it("scheduleSave debounces multiple calls", async () => {
     const bm25 = new SearchIndex();
     const persistence = new IndexPersistence(kv as never, bm25, null);

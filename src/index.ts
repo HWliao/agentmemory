@@ -422,6 +422,7 @@ async function main() {
             `AGENTMEMORY_DROP_STALE_INDEX=true is set — discarding the persisted ` +
             `vectors. Live observations will rebuild the index over time.`,
         );
+        await kv.delete(KV.bm25Index, "vectors").catch(() => {});
       } else {
         throw new Error(
           `[agentmemory] Refusing to start: persisted vector index has ` +
