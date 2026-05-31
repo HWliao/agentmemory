@@ -972,7 +972,7 @@
     .graph-search:focus { border-color: var(--ink); box-shadow: 2px 2px 0px 0px var(--border); }
     .graph-loading-control { margin-bottom: 10px; }
     .graph-loading-control label { display: block; font-size: 10px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.08em; font-family: var(--font-ui); font-weight: 700; margin-bottom: 4px; }
-    .graph-loading-control input { width: 100%; background: var(--bg); border: 1px solid var(--border); padding: 6px 8px; font-size: 12px; font-family: var(--font-mono); color: var(--ink); }
+    .graph-loading-control input, .graph-loading-control select { width: 100%; background: var(--bg); border: 1px solid var(--border); padding: 6px 8px; font-size: 12px; font-family: var(--font-mono); color: var(--ink); }
     .graph-load-status { font-size: 11px; color: var(--ink-faint); font-family: var(--font-mono); margin-bottom: 14px; }
     .graph-legend { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-light); }
     .graph-legend-item { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 11px; font-family: var(--font-ui); color: var(--ink-muted); }
@@ -983,10 +983,21 @@
     .graph-tooltip .tt-type { font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; font-weight: 600; padding: 2px 6px; border-radius: 3px; display: inline-block; }
     .graph-tooltip .tt-prop { font-size: 10px; color: var(--ink-muted); padding: 1px 0; }
     .graph-tooltip .tt-conns { font-size: 10px; color: var(--ink-faint); margin-top: 6px; border-top: 1px solid rgba(17,17,17,0.08); padding-top: 6px; font-family: var(--font-mono); }
-    .graph-controls { position: absolute; bottom: 16px; right: 16px; display: flex; flex-direction: column; gap: 2px; z-index: 5; }
+    .graph-controls { position: absolute; top: 16px; right: 16px; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; z-index: 5; }
+    .graph-control-buttons { display: flex; flex-direction: column; gap: 2px; }
     .graph-controls button { width: 36px; height: 36px; font-size: 18px; cursor: pointer; background: rgba(255,255,255,0.92); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(17,17,17,0.1); color: var(--ink); display: flex; align-items: center; justify-content: center; font-weight: 500; font-family: var(--font-ui); border-radius: 6px; transition: all 0.15s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .graph-controls button:disabled { opacity: 0.55; cursor: wait; transform: none; }
     .graph-controls button:hover { background: var(--ink); color: var(--bg); transform: scale(1.05); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .graph-controls button:disabled:hover { background: rgba(255,255,255,0.92); color: var(--ink); box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
     .graph-controls .ctrl-divider { height: 1px; background: var(--border-light); margin: 2px 4px; }
+    .graph-settings-panel { position: absolute; top: 0; right: 44px; width: 260px; max-height: calc(100vh - 180px); overflow-y: auto; display: none; padding: 14px; background: rgba(255,255,255,0.94); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(17,17,17,0.1); border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,0.12); }
+    .graph-settings-panel.open { display: block; }
+    .graph-settings-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-muted); font-family: var(--font-ui); font-weight: 700; margin-bottom: 12px; }
+    .graph-settings-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-light); }
+    .graph-settings-row { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    .graph-settings-value { font-family: var(--font-mono); color: var(--ink-faint); font-size: 11px; }
+    .graph-custom-layout { display: none; }
+    .graph-custom-layout.open { display: block; }
 
     .type-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
     .type-chip { font-size: 10px; padding: 3px 10px; border: 1px solid var(--border-light); cursor: pointer; font-family: var(--font-ui); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; transition: all 0.15s; background: var(--bg); }
@@ -1147,11 +1158,19 @@
     var TAB_IDS = ['dashboard', 'graph', 'memories', 'timeline', 'sessions', 'lessons', 'actions', 'crystals', 'audit', 'activity', 'profile', 'replay'];
     var GRAPH_LOAD_BATCH_DEFAULT = 100;
     var GRAPH_LOAD_INTERVAL_DEFAULT = 100;
+    var GRAPH_NODE_REL_SIZE_DEFAULT = 4;
+    var GRAPH_NODE_SIZE_SCALE_DEFAULT = 1;
+    var GRAPH_LAYOUT_SPREAD_DEFAULT = 'balanced';
+    var GRAPH_LAYOUT_SPREAD_PRESETS = {
+      compact: { nodeSizeScale: 1.1, chargeStrength: -6, chargeDistanceMin: 30, chargeDistanceMax: 240, linkDistance: 35, alphaDecay: 0.0228, velocityDecay: 0.48 },
+      balanced: { nodeSizeScale: 1, chargeStrength: -10, chargeDistanceMin: 50, chargeDistanceMax: 480, linkDistance: 60, alphaDecay: 0.0228, velocityDecay: 0.4 },
+      spacious: { nodeSizeScale: 0.95, chargeStrength: -24, chargeDistanceMin: 80, chargeDistanceMax: 960, linkDistance: 100, alphaDecay: 0.0228, velocityDecay: 0.35 }
+    };
 
     var state = {
       activeTab: 'dashboard',
       dashboard: { loaded: false, health: null, sessions: [], memories: [], graphStats: null, recentAudit: [], lessons: [], crystals: [] },
-      graph: { loaded: false, nodes: [], edges: [], stats: null, filters: {}, selectedNode: null, disabled: false, skippedReason: '', loadBatchSize: GRAPH_LOAD_BATCH_DEFAULT, loadIntervalMs: GRAPH_LOAD_INTERVAL_DEFAULT, totalNodes: 0, nextOffset: null, hasMore: false, loadError: '' },
+      graph: { loaded: false, nodes: [], edges: [], stats: null, filters: {}, selectedNode: null, disabled: false, skippedReason: '', loadBatchSize: GRAPH_LOAD_BATCH_DEFAULT, loadIntervalMs: GRAPH_LOAD_INTERVAL_DEFAULT, nodeSizeScale: GRAPH_NODE_SIZE_SCALE_DEFAULT, layoutSpread: GRAPH_LAYOUT_SPREAD_DEFAULT, customLayoutSpread: { nodeSizeScale: 1, chargeStrength: -10, chargeDistanceMin: 50, chargeDistanceMax: 480, linkDistance: 60, alphaDecay: 0.0228, velocityDecay: 0.4 }, settingsOpen: false, refreshing: false, totalNodes: 0, nextOffset: null, hasMore: false, loadError: '' },
       memories: { loaded: false, items: [], search: '', typeFilter: '' },
       timeline: { loaded: false, observations: [], sessionId: '', minImportance: 0, page: 0, pageSize: 50 },
       sessions: { loaded: false, items: [], selectedId: null },
@@ -1739,13 +1758,21 @@
 
     async function loadGraph() {
       var el = document.getElementById('view-graph');
-      el.innerHTML = '<div class="graph-container"><div class="graph-canvas-wrap"><div id="graph-canvas" class="force-graph-root"></div><div class="graph-empty-state" id="graph-empty-state"></div><div class="graph-controls"><button title="Zoom In" data-action="zoom-graph" data-dir="1">+</button><button title="Zoom Out" data-action="zoom-graph" data-dir="-1">&minus;</button><div class="ctrl-divider"></div><button title="Recenter" data-action="recenter-graph">⌖</button></div><div class="graph-tooltip" id="graph-tooltip"></div></div><div class="graph-sidebar" id="graph-sidebar"></div></div>';
+      el.innerHTML = '<div class="graph-container"><div class="graph-canvas-wrap"><div id="graph-canvas" class="force-graph-root"></div><div class="graph-empty-state" id="graph-empty-state"></div><div class="graph-controls"><div class="graph-control-buttons"><button type="button" title="Zoom In" aria-label="Zoom in" data-action="zoom-graph" data-dir="1">+</button><button type="button" title="Zoom Out" aria-label="Zoom out" data-action="zoom-graph" data-dir="-1">&minus;</button><div class="ctrl-divider"></div><button type="button" title="Recenter" aria-label="Recenter graph" data-action="recenter-graph">⌖</button><button type="button" title="Reset Focus" aria-label="Reset graph focus" data-action="reset-graph-focus">◎</button><button type="button" title="Refresh Graph" aria-label="Refresh graph" data-action="refresh-graph" id="graph-refresh-button">↻</button><div class="ctrl-divider"></div><button type="button" title="Graph Settings" aria-label="Graph settings" data-action="toggle-graph-settings" aria-expanded="false" aria-controls="graph-settings-panel">⚙</button></div><div class="graph-settings-panel" id="graph-settings-panel"></div></div><div class="graph-tooltip" id="graph-tooltip"></div></div><div class="graph-sidebar" id="graph-sidebar"></div></div>';
+      renderGraphSettingsPanel();
+      renderGraphRefreshState();
+      await fetchAndRenderGraph();
+    }
 
+    async function fetchAndRenderGraph() {
       var results = await Promise.all([
         apiPost('graph/query', {}),
         apiGet('graph/stats')
       ]);
-      var queryResult = results[0];
+      applyGraphQueryResult(results[0], results[1] || {});
+    }
+
+    function applyGraphQueryResult(queryResult, stats) {
       state.graph.nodes = [];
       state.graph.edges = [];
       state.graph.filters = {};
@@ -1755,12 +1782,16 @@
       state.graph.loadError = '';
       state.graph.disabled = false;
       state.graph.skippedReason = '';
-      state.graph.stats = results[1] || {};
+      state.graph.stats = stats || {};
+      graphRuntime.fullNodes = [];
+      graphRuntime.fullEdges = [];
       if (!queryResult) {
         state.graph.loadError = 'Graph data failed to load.';
         state.graph.loaded = true;
         renderGraphSidebar();
-        initGraph();
+        renderGraphSettingsPanel();
+        renderGraphRefreshState();
+        if (graphRuntime.instance) resetGraphRuntime([], []); else initGraph();
         return;
       }
       state.graph.disabled = !!(queryResult.skipped || state.graph.stats.skipped);
@@ -1773,7 +1804,9 @@
       state.graph.filters = types;
 
       renderGraphSidebar();
-      initGraph();
+      renderGraphSettingsPanel();
+      renderGraphRefreshState();
+      if (graphRuntime.instance) resetGraphRuntime(state.graph.nodes, state.graph.edges); else initGraph();
     }
 
     var NODE_SHAPES = {
@@ -1884,7 +1917,7 @@
 
     function graphNodeVal(node) {
       var degree = graphConnectionCount(node.id);
-      return Math.max(4, Math.min(18, 5 + degree * 2));
+      return Math.max(6, Math.min(34, 6 + Math.log1p(degree) * 8));
     }
 
     function graphNodeVisible(node) {
@@ -1906,11 +1939,198 @@
     }
 
     function normalizeGraphLoadBatchSize() {
-      return Math.max(1, parseInt(state.graph.loadBatchSize || GRAPH_LOAD_BATCH_DEFAULT, 10));
+      var value = state.graph.loadBatchSize;
+      if (value === undefined || value === null || value === '') value = GRAPH_LOAD_BATCH_DEFAULT;
+      var parsed = parseInt(value, 10);
+      if (!Number.isFinite(parsed)) parsed = GRAPH_LOAD_BATCH_DEFAULT;
+      return Math.max(1, parsed);
     }
 
     function normalizeGraphLoadIntervalMs() {
-      return Math.max(0, parseInt(state.graph.loadIntervalMs || GRAPH_LOAD_INTERVAL_DEFAULT, 10));
+      var value = state.graph.loadIntervalMs;
+      if (value === undefined || value === null || value === '') value = GRAPH_LOAD_INTERVAL_DEFAULT;
+      var parsed = parseInt(value, 10);
+      if (!Number.isFinite(parsed)) parsed = GRAPH_LOAD_INTERVAL_DEFAULT;
+      return Math.max(0, parsed);
+    }
+
+    function clampGraphNumber(value, min, max, fallback) {
+      var n = parseFloat(value);
+      if (!Number.isFinite(n)) return fallback;
+      return Math.max(min, Math.min(max, n));
+    }
+
+    function clampGraphForceNumber(value, min, max, fallback, allowInfinity) {
+      var raw = String(value === undefined || value === null ? '' : value).trim().toLowerCase();
+      if (allowInfinity && (raw === 'infinity' || raw === 'inf' || raw === '∞')) return Infinity;
+      var n = parseFloat(value);
+      if (!Number.isFinite(n)) return fallback;
+      return Math.max(min, Math.min(max, n));
+    }
+
+    function graphForceInputValue(value) {
+      return value === Infinity ? 'Infinity' : String(value);
+    }
+
+    function normalizeGraphNodeSizeScale() {
+      return clampGraphNumber(state.graph.nodeSizeScale, 0.75, 4, GRAPH_NODE_SIZE_SCALE_DEFAULT);
+    }
+
+    function graphNodeRelSize() {
+      var scale = normalizeGraphNodeSizeScale();
+      return GRAPH_NODE_REL_SIZE_DEFAULT * scale * scale;
+    }
+
+    function graphLayoutSpreadPreset(name) {
+      return GRAPH_LAYOUT_SPREAD_PRESETS[name] || GRAPH_LAYOUT_SPREAD_PRESETS[GRAPH_LAYOUT_SPREAD_DEFAULT];
+    }
+
+    function normalizeGraphCustomLayoutSpread(value) {
+      var base = graphLayoutSpreadPreset(GRAPH_LAYOUT_SPREAD_DEFAULT);
+      value = value || {};
+      return {
+        nodeSizeScale: clampGraphForceNumber(value.nodeSizeScale, 0.75, 4, base.nodeSizeScale, false),
+        chargeStrength: clampGraphNumber(value.chargeStrength, -500, 100, base.chargeStrength),
+        chargeDistanceMin: clampGraphForceNumber(value.chargeDistanceMin, 0, 1000, base.chargeDistanceMin, false),
+        chargeDistanceMax: clampGraphForceNumber(value.chargeDistanceMax, 1, 5000, base.chargeDistanceMax, true),
+        linkDistance: clampGraphNumber(value.linkDistance, 1, 1000, base.linkDistance),
+        alphaDecay: clampGraphForceNumber(value.alphaDecay, 0, 1, base.alphaDecay, false),
+        velocityDecay: clampGraphForceNumber(value.velocityDecay, 0, 1, base.velocityDecay, false)
+      };
+    }
+
+    function graphLayoutForceConfig() {
+      if (state.graph.layoutSpread === 'custom') return normalizeGraphCustomLayoutSpread(state.graph.customLayoutSpread);
+      return graphLayoutSpreadPreset(state.graph.layoutSpread || GRAPH_LAYOUT_SPREAD_DEFAULT);
+    }
+
+    function formatGraphScale(value) {
+      return String(Math.round(value * 100) / 100).replace(/\.0$/, '') + 'x';
+    }
+
+    function renderGraphSettingsPanel() {
+      var panel = document.getElementById('graph-settings-panel');
+      if (!panel) return;
+      var nodeScale = normalizeGraphNodeSizeScale();
+      var spread = state.graph.layoutSpread || GRAPH_LAYOUT_SPREAD_DEFAULT;
+      var custom = normalizeGraphCustomLayoutSpread(state.graph.customLayoutSpread);
+      var html = '<div class="graph-settings-title">Graph Settings</div>';
+      html += '<div class="graph-loading-control"><label for="graph-load-batch">Node batch size</label><input id="graph-load-batch" type="number" min="1" step="1" value="' + esc(String(normalizeGraphLoadBatchSize())) + '"></div>';
+      html += '<div class="graph-loading-control"><label for="graph-load-interval">Interval ms</label><input id="graph-load-interval" type="number" min="0" step="10" value="' + esc(String(normalizeGraphLoadIntervalMs())) + '"></div>';
+      html += '<div class="graph-load-status" id="graph-load-status"></div>';
+      html += '<div class="graph-settings-section graph-layout-section"><div class="graph-loading-control"><label for="graph-layout-spread">Layout spread</label><select id="graph-layout-spread">';
+      ['compact', 'balanced', 'spacious', 'custom'].forEach(function(option) {
+        html += '<option value="' + option + '"' + (spread === option ? ' selected' : '') + '>' + option + '</option>';
+      });
+      html += '</select></div>';
+      html += '<div class="graph-loading-control"><div class="graph-settings-row"><label for="graph-node-size-scale">Node size</label><span class="graph-settings-value" id="graph-node-size-scale-value">' + esc(formatGraphScale(nodeScale)) + '</span></div><input id="graph-node-size-scale" type="range" min="0.75" max="4" step="0.25" value="' + esc(String(nodeScale)) + '"></div>';
+      html += '<div class="graph-custom-layout' + (spread === 'custom' ? ' open' : '') + '">';
+      html += '<div class="graph-loading-control"><label for="graph-custom-charge-strength">Charge strength</label><input id="graph-custom-charge-strength" type="number" min="-500" max="100" step="1" value="' + esc(String(custom.chargeStrength)) + '"></div>';
+      html += '<div class="graph-loading-control"><label for="graph-custom-charge-distance-min">Charge distance min</label><input id="graph-custom-charge-distance-min" type="number" min="0" max="1000" step="1" value="' + esc(String(custom.chargeDistanceMin)) + '"></div>';
+      html += '<div class="graph-loading-control"><label for="graph-custom-charge-distance-max">Charge distance max</label><input id="graph-custom-charge-distance-max" type="text" value="' + esc(graphForceInputValue(custom.chargeDistanceMax)) + '"></div>';
+      html += '<div class="graph-loading-control"><label for="graph-custom-link-distance">Link distance</label><input id="graph-custom-link-distance" type="number" min="1" max="1000" step="1" value="' + esc(String(custom.linkDistance)) + '"></div>';
+      html += '<div class="graph-loading-control"><label for="graph-custom-alpha-decay">Alpha decay</label><input id="graph-custom-alpha-decay" type="number" min="0" max="1" step="0.0001" value="' + esc(String(custom.alphaDecay)) + '"></div>';
+      html += '<div class="graph-loading-control"><label for="graph-custom-velocity-decay">Velocity decay</label><input id="graph-custom-velocity-decay" type="number" min="0" max="1" step="0.01" value="' + esc(String(custom.velocityDecay)) + '"></div>';
+      html += '</div></div>';
+      panel.innerHTML = html;
+      panel.classList.toggle('open', !!state.graph.settingsOpen);
+      var toggle = document.querySelector('[data-action="toggle-graph-settings"]');
+      if (toggle) toggle.setAttribute('aria-expanded', state.graph.settingsOpen ? 'true' : 'false');
+      bindGraphSettingsControls(panel);
+      renderGraphLoadStatus();
+    }
+
+    function bindGraphSettingsControls(panel) {
+      var batchInput = panel.querySelector('#graph-load-batch');
+      if (batchInput) {
+        batchInput.addEventListener('change', function() {
+          state.graph.loadBatchSize = Math.max(1, parseInt(this.value || String(GRAPH_LOAD_BATCH_DEFAULT), 10));
+          renderGraphLoadStatus();
+        });
+      }
+      var intervalInput = panel.querySelector('#graph-load-interval');
+      if (intervalInput) {
+        intervalInput.addEventListener('change', function() {
+          state.graph.loadIntervalMs = Math.max(0, parseInt(this.value || String(GRAPH_LOAD_INTERVAL_DEFAULT), 10));
+          renderGraphLoadStatus();
+        });
+      }
+      var sizeInput = panel.querySelector('#graph-node-size-scale');
+      if (sizeInput) {
+        sizeInput.addEventListener('input', function() {
+          var switchedToCustom = false;
+          state.graph.nodeSizeScale = clampGraphNumber(this.value, 0.75, 4, GRAPH_NODE_SIZE_SCALE_DEFAULT);
+          if (state.graph.layoutSpread !== 'custom') {
+            state.graph.customLayoutSpread = normalizeGraphCustomLayoutSpread(graphLayoutForceConfig());
+            state.graph.layoutSpread = 'custom';
+            switchedToCustom = true;
+          }
+          state.graph.customLayoutSpread = normalizeGraphCustomLayoutSpread(Object.assign({}, state.graph.customLayoutSpread, { nodeSizeScale: state.graph.nodeSizeScale }));
+          var value = document.getElementById('graph-node-size-scale-value');
+          if (value) value.textContent = formatGraphScale(state.graph.nodeSizeScale);
+          if (switchedToCustom) renderGraphSettingsPanel();
+          renderGraph();
+        });
+      }
+      var spreadSelect = panel.querySelector('#graph-layout-spread');
+      if (spreadSelect) {
+        spreadSelect.addEventListener('change', function() {
+          var previousConfig = graphLayoutForceConfig();
+          state.graph.layoutSpread = this.value || GRAPH_LAYOUT_SPREAD_DEFAULT;
+          if (state.graph.layoutSpread === 'custom') {
+            state.graph.customLayoutSpread = normalizeGraphCustomLayoutSpread(previousConfig);
+            state.graph.nodeSizeScale = state.graph.customLayoutSpread.nodeSizeScale;
+          } else {
+            state.graph.nodeSizeScale = graphLayoutSpreadPreset(state.graph.layoutSpread).nodeSizeScale;
+          }
+          renderGraphSettingsPanel();
+          applyGraphLayoutForces();
+        });
+      }
+      ['charge-strength', 'charge-distance-min', 'charge-distance-max', 'link-distance', 'alpha-decay', 'velocity-decay'].forEach(function(name) {
+        var input = panel.querySelector('#graph-custom-' + name);
+        if (!input) return;
+        input.addEventListener('change', function() {
+          var custom = normalizeGraphCustomLayoutSpread(state.graph.customLayoutSpread);
+          custom.nodeSizeScale = state.graph.nodeSizeScale;
+          custom.chargeStrength = clampGraphNumber((panel.querySelector('#graph-custom-charge-strength') || {}).value, -500, 100, custom.chargeStrength);
+          custom.chargeDistanceMin = clampGraphForceNumber((panel.querySelector('#graph-custom-charge-distance-min') || {}).value, 0, 1000, custom.chargeDistanceMin, false);
+          custom.chargeDistanceMax = clampGraphForceNumber((panel.querySelector('#graph-custom-charge-distance-max') || {}).value, 1, 5000, custom.chargeDistanceMax, true);
+          custom.linkDistance = clampGraphNumber((panel.querySelector('#graph-custom-link-distance') || {}).value, 1, 1000, custom.linkDistance);
+          custom.alphaDecay = clampGraphForceNumber((panel.querySelector('#graph-custom-alpha-decay') || {}).value, 0, 1, custom.alphaDecay, false);
+          custom.velocityDecay = clampGraphForceNumber((panel.querySelector('#graph-custom-velocity-decay') || {}).value, 0, 1, custom.velocityDecay, false);
+          state.graph.customLayoutSpread = custom;
+          state.graph.layoutSpread = 'custom';
+          state.graph.nodeSizeScale = custom.nodeSizeScale;
+          applyGraphLayoutForces();
+        });
+      });
+    }
+
+    function renderGraphRefreshState() {
+      var button = document.getElementById('graph-refresh-button');
+      if (!button) return;
+      button.disabled = !!state.graph.refreshing;
+      button.setAttribute('aria-busy', state.graph.refreshing ? 'true' : 'false');
+      button.setAttribute('aria-label', state.graph.refreshing ? 'Loading graph data' : 'Refresh graph');
+      button.textContent = state.graph.refreshing ? '…' : '↻';
+      button.title = state.graph.refreshing ? 'Loading graph data...' : 'Refresh Graph';
+    }
+
+    function applyGraphLayoutForces() {
+      if (!graphRuntime.instance || typeof graphRuntime.instance.d3Force !== 'function') return;
+      var config = graphLayoutForceConfig();
+      state.graph.nodeSizeScale = config.nodeSizeScale;
+      if (typeof graphRuntime.instance.nodeRelSize === 'function') graphRuntime.instance.nodeRelSize(graphNodeRelSize());
+      var charge = graphRuntime.instance.d3Force('charge');
+      if (charge && typeof charge.strength === 'function') charge.strength(config.chargeStrength);
+      if (charge && typeof charge.distanceMin === 'function') charge.distanceMin(config.chargeDistanceMin);
+      if (charge && typeof charge.distanceMax === 'function') charge.distanceMax(config.chargeDistanceMax);
+      var link = graphRuntime.instance.d3Force('link');
+      if (link && typeof link.distance === 'function') link.distance(config.linkDistance);
+      if (typeof graphRuntime.instance.d3AlphaDecay === 'function') graphRuntime.instance.d3AlphaDecay(config.alphaDecay);
+      if (typeof graphRuntime.instance.d3VelocityDecay === 'function') graphRuntime.instance.d3VelocityDecay(config.velocityDecay);
+      if (typeof graphRuntime.instance.d3ReheatSimulation === 'function') graphRuntime.instance.d3ReheatSimulation();
     }
 
     function mergeGraphPage(result) {
@@ -2073,11 +2293,6 @@
 
       var html = '<input type="text" class="graph-search" id="graph-search" placeholder="Search nodes...">';
 
-      html += '<h3 style="margin-top:16px;font-size:10px;text-transform:uppercase;letter-spacing:0.12em;color:var(--ink-muted);font-family:var(--font-ui);font-weight:700;">Loading</h3>';
-      html += '<div class="graph-loading-control"><label for="graph-load-batch">Node batch size</label><input id="graph-load-batch" type="number" min="1" step="1" value="' + esc(String(state.graph.loadBatchSize || GRAPH_LOAD_BATCH_DEFAULT)) + '"></div>';
-      html += '<div class="graph-loading-control"><label for="graph-load-interval">Interval ms</label><input id="graph-load-interval" type="number" min="0" step="10" value="' + esc(String(state.graph.loadIntervalMs || GRAPH_LOAD_INTERVAL_DEFAULT)) + '"></div>';
-      html += '<div class="graph-load-status" id="graph-load-status"></div>';
-
       html += '<h3 style="margin-top:16px;font-size:10px;text-transform:uppercase;letter-spacing:0.12em;color:var(--ink-muted);font-family:var(--font-ui);font-weight:700;">Graph Stats</h3>';
       html += '<div style="display:flex;gap:20px;margin:10px 0 16px;padding:12px;background:var(--bg-alt);border:1px solid var(--border-light);border-radius:4px;">';
       html += '<div style="text-align:center;flex:1;"><span style="font-size:28px;font-weight:900;font-family:var(--font-display);color:var(--ink);line-height:1;">' + nodeCount + '</span><div style="font-size:8px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:0.12em;font-family:var(--font-ui);font-weight:600;margin-top:4px;">Nodes</div></div>';
@@ -2120,21 +2335,6 @@
       if (searchInput) {
         bindImeSafeSearch(searchInput, 200, function(v){ graphSearchTerm = v.toLowerCase(); renderGraph(); });
       }
-      var batchInput = document.getElementById('graph-load-batch');
-      if (batchInput) {
-        batchInput.addEventListener('change', function() {
-          state.graph.loadBatchSize = Math.max(1, parseInt(this.value || String(GRAPH_LOAD_BATCH_DEFAULT), 10));
-          renderGraphLoadStatus();
-        });
-      }
-      var intervalInput = document.getElementById('graph-load-interval');
-      if (intervalInput) {
-        intervalInput.addEventListener('change', function() {
-          state.graph.loadIntervalMs = Math.max(0, parseInt(this.value || String(GRAPH_LOAD_INTERVAL_DEFAULT), 10));
-          renderGraphLoadStatus();
-        });
-      }
-      renderGraphLoadStatus();
       restoreSearchFocus(__focus);
     }
 
@@ -2159,6 +2359,7 @@
         })
         .nodeColor(graphNodeDisplayColor)
         .nodeVal(graphNodeVal)
+        .nodeRelSize(graphNodeRelSize())
         .nodeVisibility(graphNodeVisible)
         .linkSource('sourceNodeId')
         .linkTarget('targetNodeId')
@@ -2174,6 +2375,7 @@
       }
       resizeGraph();
       window.addEventListener('resize', resizeGraph);
+      applyGraphLayoutForces();
       resetGraphRuntime(state.graph.nodes, state.graph.edges);
     }
 
@@ -2291,6 +2493,33 @@
       graphRuntime.instance.centerAt(0, 0, 400);
       graphRuntime.instance.zoom(1, 400);
     };
+
+    function toggleGraphSettings() {
+      state.graph.settingsOpen = !state.graph.settingsOpen;
+      var toggle = document.querySelector('[data-action="toggle-graph-settings"]');
+      if (toggle) toggle.setAttribute('aria-expanded', state.graph.settingsOpen ? 'true' : 'false');
+      renderGraphSettingsPanel();
+    }
+
+    function resetGraphFocus() {
+      state.graph.selectedNode = null;
+      var panel = document.getElementById('selected-node-panel');
+      if (panel) panel.innerHTML = '';
+      renderGraph();
+    }
+
+    async function refreshGraph() {
+      if (state.graph.refreshing) return;
+      state.graph.refreshing = true;
+      renderGraphRefreshState();
+      resetGraphFocus();
+      try {
+        await fetchAndRenderGraph();
+      } finally {
+        state.graph.refreshing = false;
+        renderGraphRefreshState();
+      }
+    }
 
     function selectGraphNode(simNode) {
       state.graph.selectedNode = simNode;
@@ -2495,6 +2724,7 @@
         graphRuntime.instance
           .nodeColor(graphNodeDisplayColor)
           .nodeVal(graphNodeVal)
+          .nodeRelSize(graphNodeRelSize())
           .nodeVisibility(graphNodeVisible)
           .linkVisibility(graphLinkVisible)
           .linkColor(graphLinkColor);
@@ -4196,6 +4426,18 @@
       }
       if (action === 'recenter-graph') {
         recenterGraph();
+        return;
+      }
+      if (action === 'toggle-graph-settings') {
+        toggleGraphSettings();
+        return;
+      }
+      if (action === 'reset-graph-focus') {
+        resetGraphFocus();
+        return;
+      }
+      if (action === 'refresh-graph') {
+        refreshGraph();
         return;
       }
       if (action === 'rebuild-graph') {

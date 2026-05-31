@@ -45,6 +45,79 @@ describe("viewer graph force-graph renderer", () => {
     expect(viewer).toContain('id="graph-load-interval"');
   });
 
+  it("places graph controls in the top-right with settings, reset focus, and refresh actions", () => {
+    expect(viewer).toContain(".graph-controls { position: absolute; top: 16px; right: 16px;");
+    expect(viewer).toContain('data-action="toggle-graph-settings"');
+    expect(viewer).toContain('data-action="reset-graph-focus"');
+    expect(viewer).toContain('data-action="refresh-graph"');
+    expect(viewer).toContain('id="graph-refresh-button"');
+    expect(viewer).toContain('id="graph-settings-panel"');
+    expect(viewer).toContain('aria-label="Zoom in"');
+    expect(viewer).toContain('aria-label="Zoom out"');
+    expect(viewer).toContain('aria-label="Recenter graph"');
+    expect(viewer).toContain('aria-label="Reset graph focus"');
+    expect(viewer).toContain('aria-label="Refresh graph"');
+    expect(viewer).toContain('aria-label="Graph settings"');
+  });
+
+  it("exposes session-local node size and layout spread tuning controls", () => {
+    expect(viewer).toContain("GRAPH_NODE_REL_SIZE_DEFAULT = 4");
+    expect(viewer).toContain("GRAPH_NODE_SIZE_SCALE_DEFAULT = 1");
+    expect(viewer).toContain("GRAPH_LAYOUT_SPREAD_DEFAULT = 'balanced'");
+    expect(viewer).toContain("GRAPH_LAYOUT_SPREAD_PRESETS");
+    expect(viewer).toContain("balanced: { nodeSizeScale: 1, chargeStrength: -10, chargeDistanceMin: 50, chargeDistanceMax: 480, linkDistance: 60, alphaDecay: 0.0228, velocityDecay: 0.4 }");
+    expect(viewer).toContain("compact: { nodeSizeScale: 1.1, chargeStrength: -6, chargeDistanceMin: 30, chargeDistanceMax: 240, linkDistance: 35, alphaDecay: 0.0228, velocityDecay: 0.48 }");
+    expect(viewer).toContain("spacious: { nodeSizeScale: 0.95, chargeStrength: -24, chargeDistanceMin: 80, chargeDistanceMax: 960, linkDistance: 100, alphaDecay: 0.0228, velocityDecay: 0.35 }");
+    expect(viewer).toContain('id="graph-node-size-scale"');
+    expect(viewer).toContain('id="graph-layout-spread"');
+    expect(viewer).toContain("graph-layout-section");
+    expect(viewer).toContain('id="graph-custom-charge-strength"');
+    expect(viewer).toContain('id="graph-custom-charge-distance-min"');
+    expect(viewer).toContain('id="graph-custom-charge-distance-max"');
+    expect(viewer).toContain('id="graph-custom-link-distance"');
+    expect(viewer).toContain('id="graph-custom-alpha-decay"');
+    expect(viewer).toContain('id="graph-custom-velocity-decay"');
+    expect(viewer).not.toContain("localStorage.setItem('graph-node");
+    expect(viewer).not.toContain("localStorage.getItem('graph-node");
+    expect(viewer).not.toContain("localStorage.setItem('graph-layout");
+    expect(viewer).not.toContain("localStorage.getItem('graph-layout");
+  });
+
+  it("keeps node size importance-based while applying a global visual scale", () => {
+    expect(viewer).toContain(".nodeRelSize(graphNodeRelSize())");
+    expect(viewer).toContain("function graphNodeRelSize()");
+    expect(viewer).toContain("Math.log1p(degree)");
+    expect(viewer).toContain("state.graph.nodeSizeScale");
+    expect(viewer).toContain("GRAPH_NODE_REL_SIZE_DEFAULT * scale * scale");
+    expect(viewer).toContain("var switchedToCustom = false;");
+    expect(viewer).toContain("if (switchedToCustom) renderGraphSettingsPanel();");
+    expect(viewer).not.toContain(".nodeVal(state.graph.nodeSizeScale)");
+  });
+
+  it("applies layout spread presets and custom force values through d3Force", () => {
+    expect(viewer).toContain("function applyGraphLayoutForces()");
+    expect(viewer).toContain("d3Force('charge')");
+    expect(viewer).toContain("d3Force('link')");
+    expect(viewer).toContain("charge.strength(config.chargeStrength)");
+    expect(viewer).toContain("charge.distanceMin(config.chargeDistanceMin)");
+    expect(viewer).toContain("charge.distanceMax(config.chargeDistanceMax)");
+    expect(viewer).toContain("link.distance(config.linkDistance)");
+    expect(viewer).toContain("d3AlphaDecay(config.alphaDecay)");
+    expect(viewer).toContain("d3VelocityDecay(config.velocityDecay)");
+    expect(viewer).toContain("d3ReheatSimulation()");
+    expect(viewer).toContain("var previousConfig = graphLayoutForceConfig();");
+  });
+
+  it("separates reset focus from refresh graph loading", () => {
+    expect(viewer).toContain("function resetGraphFocus()");
+    expect(viewer).toContain("async function refreshGraph()");
+    expect(viewer).toContain("state.graph.refreshing");
+    expect(viewer).toContain("renderGraphRefreshState()");
+    expect(viewer).toContain("resetGraphFocus();");
+    expect(viewer).toContain("button.disabled = !!state.graph.refreshing");
+    expect(viewer).toContain("button.setAttribute('aria-label', state.graph.refreshing ? 'Loading graph data' : 'Refresh graph')");
+  });
+
   it("requests graph data once and applies progressive loading on the client", () => {
     expect(viewer).toContain("apiPost('graph/query', {})");
     expect(viewer).toContain("loadGraphBatch()");
