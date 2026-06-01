@@ -17,6 +17,7 @@ import {
   isConsolidationEnabled,
   isAutoCompressEnabled,
   isContextInjectionEnabled,
+  getInjectionConfig,
   detectEmbeddingProvider,
   detectLlmProviderKind,
   getAgentId,
@@ -273,6 +274,7 @@ export function registerApiTriggers(
           provider: providerKind,
           embeddingProvider,
           flags,
+          injection: getInjectionConfig(),
         },
       };
     },

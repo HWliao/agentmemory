@@ -11,7 +11,7 @@ import {
   isGraphExtractionEnabled,
   isAutoCompressEnabled,
   isConsolidationEnabled,
-  isContextInjectionEnabled,
+  getInjectionConfig,
   isDropStaleIndexEnabled,
 } from "./config.js";
 import {
@@ -285,13 +285,17 @@ async function main() {
     );
   }
 
-  if (isContextInjectionEnabled()) {
+  const injectionConfig = getInjectionConfig();
+  if (injectionConfig.enabled) {
     bootLog(
-      `WARNING: AGENTMEMORY_INJECT_CONTEXT=true — the PreToolUse and SessionStart hooks will inject up to ~4000 chars of memory context into every tool turn. On Claude Pro this burns session tokens proportional to your tool-call frequency (see #143). Set AGENTMEMORY_INJECT_CONTEXT=false to disable.`,
+      `WARNING: AGENTMEMORY_INJECT_CONTEXT=true — context injection enabled via plugin hooks.` +
+      `  Context: ${injectionConfig.context ? "ON" : "OFF"} (first-turn system prompt injection).` +
+      `  Enrich: ${injectionConfig.enrich ? "ON" : "OFF"} (per-step file-based recall via chat.messages.transform).` +
+      `  Set AGENTMEMORY_INJECT_CONTEXT=false to disable all injection (agent uses MCP tools for manual recall).`,
     );
   } else {
     bootLog(
-      `Context injection: OFF (default, #143) — hooks capture observations but do not inject context into Claude Code's conversation. Set AGENTMEMORY_INJECT_CONTEXT=true to opt-in (warning: expect your Claude Pro allocation to drain faster).`,
+      `Context injection: OFF (default, #143) — hooks capture observations but do not inject context into the conversation. Set AGENTMEMORY_INJECT_CONTEXT=true to opt-in.`,
     );
   }
 

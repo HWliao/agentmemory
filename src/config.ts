@@ -350,6 +350,24 @@ export function isContextInjectionEnabled(): boolean {
   return getMergedEnv()["AGENTMEMORY_INJECT_CONTEXT"] === "true";
 }
 
+export function isContextContextEnabled(): boolean {
+  return getMergedEnv()["AGENTMEMORY_INJECT_CONTEXT"] === "true"
+    && getMergedEnv()["AGENTMEMORY_INJECT_CONTEXT_CONTEXT"] !== "false";
+}
+
+export function isContextEnrichEnabled(): boolean {
+  return getMergedEnv()["AGENTMEMORY_INJECT_CONTEXT"] === "true"
+    && getMergedEnv()["AGENTMEMORY_INJECT_CONTEXT_ENRICH"] !== "false";
+}
+
+export function getInjectionConfig() {
+  return {
+    enabled: isContextInjectionEnabled(),
+    context: isContextContextEnabled(),
+    enrich: isContextEnrichEnabled(),
+  };
+}
+
 export function getConsolidationDecayDays(): number {
   return safeParseInt(getMergedEnv()["CONSOLIDATION_DECAY_DAYS"], 30);
 }

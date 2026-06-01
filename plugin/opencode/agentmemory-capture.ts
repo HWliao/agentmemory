@@ -42,6 +42,19 @@ async function postJson(path: string, body: Record<string, unknown>): Promise<un
   }
 }
 
+async function getJson(path: string): Promise<unknown | null> {
+  try {
+    const res = await fetch(`${API}/agentmemory${path}`, {
+      headers: authHeaders(),
+      signal: AbortSignal.timeout(5000),
+    });
+    return res.ok ? await res.json() : null;
+  } catch (e) {
+    if (DEBUG) console.error(`[agentmemory] GET ${path} failed:`, (e as Error).message);
+    return null;
+  }
+}
+
 async function observe(
   sessionId: string,
   hookType: string,
@@ -70,6 +83,9 @@ const contextInjectedSessions = new Set<string>();
 // the first prompt_submit (fallback for older OpenCode builds that
 // don't implement experimental.chat.system.transform).
 const startContextCache = new Map<string, string>();
+let injectContext = false;
+let injectEnrich = false;
+const lastEnrichCache = new Map<string, string>();
 
 function stashFor(sid: string): Set<string> {
   let s = stashedFiles.get(sid);
@@ -93,6 +109,7 @@ function pruneSessionMaps(sid: string): void {
   stashedFiles.delete(sid);
   seenSubtaskIds.delete(sid);
   seenToolCallIds.delete(sid);
+  lastEnrichCache.delete(sid);
 }
 
 function safeSlice(v: unknown, max: number): string {
@@ -170,6 +187,13 @@ function extractErrorMessage(err: unknown): string {
 export const AgentmemoryCapturePlugin: Plugin = async (ctx) => {
   projectPath = ctx.worktree || ctx.project?.id || process.cwd();
 
+  const flagsResult = await getJson("/config/flags");
+  const inj = (flagsResult as any)?.injection;
+  if (inj) {
+    injectContext = inj.context;
+    injectEnrich = inj.enrich;
+  }
+
   return {
     event: async ({ event }) => {
       const type = event.type;
@@ -195,6 +219,7 @@ export const AgentmemoryCapturePlugin: Plugin = async (ctx) => {
         seenSubtaskIds.delete(sessionId);
         seenToolCallIds.delete(sessionId);
         contextInjectedSessions.delete(sessionId);
+        lastEnrichCache.delete(sessionId);
         const startResult = await postJson("/session/start", {
           sessionId,
           title: info?.title ?? null,
@@ -284,10 +309,8 @@ export const AgentmemoryCapturePlugin: Plugin = async (ctx) => {
         post("/crystals/auto", { olderThanDays: 7 }, 30000);
         post("/consolidate-pipeline", { tier: "all", force: true }, 30000);
         if (sid === activeSessionId) activeSessionId = null;
-        stashedFiles.delete(sid);
+        pruneSessionMaps(sid);
         startContextCache.delete(sid);
-        seenSubtaskIds.delete(sid);
-        seenToolCallIds.delete(sid);
         contextInjectedSessions.delete(sid);
       }
 
@@ -614,12 +637,9 @@ export const AgentmemoryCapturePlugin: Plugin = async (ctx) => {
       const sid = input.sessionID || activeSessionId;
       if (!sid) return;
 
-      if (!contextInjectedSessions.has(sid)) {
+      if (injectContext && !contextInjectedSessions.has(sid)) {
         if (!Array.isArray(output.system)) return;
         output.system.push(AGENTMEMORY_INSTRUCTIONS);
-        // prefer the context already fetched at session.created;
-        // fall back to a fresh /context call if the cache missed (e.g.
-        // session resumed across plugin reloads).
         let ctx = startContextCache.get(sid);
         if (typeof ctx !== "string" || ctx.length === 0) {
           const result = await postJson("/context", {
@@ -635,6 +655,13 @@ export const AgentmemoryCapturePlugin: Plugin = async (ctx) => {
         }
         contextInjectedSessions.add(sid);
       }
+    },
+
+    // ── experimental.chat.messages.transform ──
+    "experimental.chat.messages.transform": async (_input, output) => {
+      const sid = activeSessionId;
+      if (!sid) return;
+      if (!injectEnrich) return;
 
       const stash = stashFor(sid);
       if (stash.size === 0) return;
@@ -647,12 +674,31 @@ export const AgentmemoryCapturePlugin: Plugin = async (ctx) => {
       });
 
       const enrichCtx = (enrichResult as any)?.context;
-      if (typeof enrichCtx === "string" && enrichCtx.length > 0) {
-        if (Array.isArray(output.system)) {
-          output.system.push(enrichCtx);
-        }
+      const enrichmentText = typeof enrichCtx === "string" ? enrichCtx : "";
+
+      const cached = lastEnrichCache.get(sid);
+      if (cached === enrichmentText) {
         for (const f of files) stash.delete(f);
+        return;
       }
+      lastEnrichCache.set(sid, enrichmentText);
+
+      if (enrichmentText.length === 0) {
+        for (const f of files) stash.delete(f);
+        return;
+      }
+
+      if (Array.isArray(output.messages)) {
+        output.messages.unshift({
+          info: { role: "user" },
+          parts: [{
+            type: "text",
+            text: `<agentmemory-enrich>\n${enrichCtx}\n</agentmemory-enrich>`,
+            synthetic: true,
+          }],
+        });
+      }
+      for (const f of files) stash.delete(f);
     },
 
     // ── experimental.session.compacting (WIP) ──

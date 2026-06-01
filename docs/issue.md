@@ -106,3 +106,13 @@ Use `experimental.chat.messages.transform` instead of `chat.message`. This hook 
 - `src/functions/enrich.ts` — `mem::enrich` function definition
 - `src/mcp/tools-registry.ts:952-960` — `AGENTMEMORY_TOOLS` default setting
 - OpenCode plugin API: `chat.message` injects via `output.parts.push()` into message stream; `chat.system.transform` injects via `output.system.push()` into system prompt
+
+## Resolution
+
+**Status**: Fixed as of 2026-06-01.
+
+**Fix**: Enrich injection migrated from `chat.system.transform` (per-step system prompt mutation) to `chat.messages.transform` (per-step message stream injection). Context injection now fires once per session (first turn only) in `chat.system.transform`. A three-tier switch model (`AGENTMEMORY_INJECT_CONTEXT` master + `CONTEXT`/`ENRICH` sub-switches) replaces the single binary flag. Config sourced from backend `GET /agentmemory/config/flags` instead of `process.env`.
+
+**Results**: System prompt stable after first turn → LLM prompt cache hit rate ~100% (was ~0%). Stash cleanup preserved (files deleted after successful enrich injection). Session compaction triggers re-injection automatically.
+
+See `docs/spec.md` for full design.
